@@ -149,6 +149,12 @@ class Meta(nn.Module):
         if len(y_spt.shape) == 1:
             y_spt = y_spt.unsqueeze(1)
 
+        if y_qry.shape[-1] != 1:
+            y_qry = y_qry.unsqueeze(-1)
+
+        if y_spt.shape[-1] != 1:
+            y_spt = y_spt.unsqueeze(-1)
+
         # in order to not ruin the state of running_mean/variance and bn_weight/bias
         # we finetunning on the copied model instead of self.net
         net = deepcopy(self.net)

@@ -8,6 +8,7 @@ import torch
 from maml_mod import Meta
 
 from utils import NamedDict
+from example import get_args, get_network_structure, get_dataset
 
 
 class Sol:
@@ -56,9 +57,13 @@ class Sol:
         """
         assert len(self.train_set) == 4
         assert len(self.test_set) == 4
-        required_attr = ['epoch', 'update_lr', 'meta_lr', 'n_way', 'k_spt',
-                         'k_qry', 'task_num', 'update_step', 'update_step_test']
+        required_attr = ['epoch', 'update_lr', 'meta_lr', 'k_spt',
+                         'k_qry', 'update_step', 'update_step_test']
         assert all([hasattr(self.args, attr) for attr in required_attr])
+        if 'n_way' not in self.args:
+            self.args.n_way = 0
+        if 'task_num' not in self.args:
+            self.args.task_num = 0
 
     def dateset_to_device(self, device: torch.device = None) -> None:
         """
@@ -109,12 +114,15 @@ class Sol:
 def main():
     # fixme: change the following declaration to your own
     # see Sol.__init__ for more information
-    dataset = None
-    args = None
-    network_structure = None
+    args = get_args()
+    network_structure = get_network_structure(args)
+    dataset = get_dataset(args)
     sol = Sol(dataset, args, network_structure)
-    train_loss = sol.train(explicit=10)
+    train_loss = sol.train(explicit=5)
     test_res, test_loss = sol.test()
+    test_res = test_res.cpu().detach().numpy()
+    print(np.sum(np.abs(test_res.flatten() - dataset[1][3].flatten())))
+
     print(f'Test loss: {test_loss:.4f}')
 
 
