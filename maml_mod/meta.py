@@ -128,13 +128,14 @@ class Meta(nn.Module):
 
         return loss_q.item()
 
-    def finetunning(self, x_spt, y_spt, x_qry, y_qry):
+    def finetunning(self, x_spt, y_spt, x_qry, y_qry, retrun_single_lose=True):
         """
 
         :param x_spt:   [setsz, c_, h, w]
         :param y_spt:   [setsz]
         :param x_qry:   [querysz, c_, h, w]
         :param y_qry:   [querysz]
+        :param retrun_single_lose: if True, return a single loss, else return a list of losses
         :return:
         """
         loss_func = F.mse_loss
@@ -164,6 +165,7 @@ class Meta(nn.Module):
         loss = loss_func(logits, y_spt)
         grad = torch.autograd.grad(loss, net.parameters())
         fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, net.parameters())))
+        losses = []
 
         for k in range(1, self.update_step_test):
             # 1. run the i-th task and compute loss for k=1~K-1
@@ -176,9 +178,9 @@ class Meta(nn.Module):
 
             logits_q = net(x_qry, fast_weights, bn_training=True)
             # loss_q will be overwritten and just keep the loss_q on last update step.
-            loss_q = loss_func(logits_q, y_qry)
+            losses.append(loss_func(logits_q, y_qry).item())
 
         del net
 
-        return loss_q.item(), logits_q
+        return losses[-1] if retrun_single_lose else losses, logits_q
 

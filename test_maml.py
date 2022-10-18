@@ -141,11 +141,11 @@ def main():
 
     # train_x_spt.shape = (<train_task_num>, args.k_spt, N_ARG_IN)
     # train_y_spt.shape = (<train_task_num>, args.k_spt)
-    # test_x_spt.shape = (<test_task_num>, args.k_qry, N_ARG_IN)
-    # test_y_spt.shape = (<test_task_num>, args.k_qry)
+    # test_x_spt.shape = (<test_task_num>, args.k_spt, N_ARG_IN)
+    # test_y_spt.shape = (<test_task_num>, args.k_spt)
     train_x_spt, train_y_spt, test_x_spt, test_y_spt = get_train_test_xy(train_set)
 
-    # train_x_qry.shape = (<train_task_num>, args.k_spt, N_ARG_IN)
+    # train_x_qry.shape = (<train_task_num>, args.k_qry, N_ARG_IN)
     # ...
     train_x_qry, train_y_qry, test_x_qry, test_y_qry = get_train_test_xy(test_set)
 

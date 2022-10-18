@@ -99,7 +99,7 @@ def create_dataset_inner(x, n_dim: Tuple[int, int], delta: Tuple[List[int], List
     return new_x, y
 
 
-def create_dataset(problem_dim: Tuple[int, int], x=None, n_problem=None, spt_qry=None, delta=None) -> Tuple[
+def create_dataset(problem_dim: Tuple[int, int], x=None, n_problem=None, spt_qry=None, delta=None, normalize_targets=True, **_) -> Tuple[
     Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
     Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
 ]:
@@ -117,6 +117,8 @@ def create_dataset(problem_dim: Tuple[int, int], x=None, n_problem=None, spt_qry
         [n_train, n_test]
     spt_qry : Tuple[int, int]
         The number of support and query points for each problem
+    normalize_targets : bool
+        Whether to normalize the targets
 
     Returns
     -------
@@ -148,9 +150,20 @@ def create_dataset(problem_dim: Tuple[int, int], x=None, n_problem=None, spt_qry
                 delta2 = np.random.randint(0, 10, n_problem[i])
                 delta.append([delta1, delta2])
 
-    train_set = (*create_dataset_inner(x[0], problem_dim, delta[0]), *create_dataset_inner(x[1], problem_dim, delta[1]))
-    test_set = (*create_dataset_inner(x[2], problem_dim, delta[2]), *create_dataset_inner(x[3], problem_dim, delta[3]))
-    return train_set, test_set
+    train_set = [*create_dataset_inner(x[0], problem_dim, delta[0]), *create_dataset_inner(x[1], problem_dim, delta[1])]
+    test_set = [*create_dataset_inner(x[2], problem_dim, delta[2]), *create_dataset_inner(x[3], problem_dim, delta[3])]
+    if normalize_targets:
+        minimum = np.min(np.concatenate([train_set[1], test_set[1]]), axis=None)
+        train_set[1] -= minimum
+        test_set[1] -= minimum
+        train_set[3] -= minimum
+        test_set[3] -= minimum
+        maximum = np.max(np.concatenate([train_set[1], test_set[1]]), axis=None)
+        train_set[1] /= maximum
+        test_set[1] /= maximum
+        train_set[3] /= maximum
+        test_set[3] /= maximum
+    return tuple(train_set), tuple(test_set)
 
 
 def test():

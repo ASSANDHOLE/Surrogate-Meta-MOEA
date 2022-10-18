@@ -116,14 +116,16 @@ def main():
     # see Sol.__init__ for more information
     args = get_args()
     network_structure = get_network_structure(args)
-    dataset = get_dataset(args)
+    dataset = get_dataset(args, normalize_targets=True)
     sol = Sol(dataset, args, network_structure)
     train_loss = sol.train(explicit=5)
     test_res, test_loss = sol.test()
-    test_res = test_res.cpu().detach().numpy()
-    print(np.sum(np.abs(test_res.flatten() - dataset[1][3].flatten())))
-
     print(f'Test loss: {test_loss:.4f}')
+
+    args.test_update_step = 30
+    sol = Sol(dataset, args, network_structure)
+    random_res, random_loss = sol.test()
+    print(f'Random loss: {random_loss:.4f}')
 
 
 if __name__ == '__main__':
