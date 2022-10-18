@@ -26,20 +26,46 @@ def create_dataset_sinewave(problem_dim: Tuple[int, int], train_test: Tuple[int,
             Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
             Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
         ]:
+    """
+    Sample sine wave functions and create a dataset for meta-learning.
+    Hyperparameters from MAML paper: https://arxiv.org/pdf/1703.03400.pdf.
+    Using consistent hyperparameters for comparison.
+
+    Parameters
+    ----------
+    problem_dim : Tuple[int, int]
+        The number of variables and number of objectives for each problem
+    train_test : Tuple[int, int]
+        [n_train, n_test]
+    spt_qry : Tuple[int, int]
+        The number of support and query points for each problem
+    amp : Tuple[float, float]
+        The amplitude range
+    phase : Tuple[float, float]
+        The phase range
+    domain : Tuple[float, float]
+        The domain of input
+
+    Returns
+    -------
+    Tuple[
+        Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+        Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+    ]
+        The first element is the training set [support set, support label, query set, query label]
+        The second element is the test set [support set, support label, query set, query label]
+    """
     if problem_dim[0] != 1:
         print('The objective function of the dataset only support 1 variable. \n'
               'Current number of variables: %d', problem_dim[0])
         exit(-1)
-
-    # generate train set
-    num_points = spt_qry[0] + spt_qry[1]
 
     def create_dataset_inner(n_problems: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         set_spt_x, set_spt_y, set_qry_x, set_qry_y = [], [], [], []
         for objective in range(problem_dim[1] * n_problems):
             _amp = amp[0] + random.random() * (amp[1]-amp[0])  # [0.1, 5.0)
             _phase = phase[0] + random.random() * (phase[1]-phase[0])  # [0, 2pi)
-            dataset, _ = get_sine_wave_sampling(_amp, _phase, num_points, domain)
+            dataset, _ = get_sine_wave_sampling(_amp, _phase, spt_qry[0] + spt_qry[1], domain)
             random.shuffle(dataset)
             obj_spt, obj_qry = dataset[:spt_qry[0]], dataset[spt_qry[0]:]
             obj_spt_x, obj_spt_y = zip(*obj_spt)
@@ -63,7 +89,6 @@ def test():
     train_set, test_set = create_dataset_sinewave(problem_dim=(1, 3), train_test=(4, 2), spt_qry=(5, 20))  # (12, 5, 1)
     print(train_set[0].shape, train_set[1].shape, train_set[2].shape, train_set[3].shape)
     print(test_set[0].shape, test_set[1].shape, test_set[2].shape, test_set[3].shape)
-    print(train_set[0])
 
 
 if __name__ == '__main__':
