@@ -184,3 +184,66 @@ class Meta(nn.Module):
 
         return losses[-1] if return_single_lose else losses, logits_q
 
+    def pretrain_finetunning(self, train_x, train_y, x_spt, y_spt, x_qry, y_qry, return_single_lose=True):
+
+        loss_func = F.mse_loss
+
+        assert len(x_spt.shape) >= 2
+
+        querysz = x_qry.size(0)
+
+        if len(y_qry.shape) == 1:
+            y_qry = y_qry.unsqueeze(1)
+
+        if len(y_spt.shape) == 1:
+            y_spt = y_spt.unsqueeze(1)
+
+        if y_qry.shape[-1] != 1:
+            y_qry = y_qry.unsqueeze(-1)
+
+        if y_spt.shape[-1] != 1:
+            y_spt = y_spt.unsqueeze(-1)
+
+        # in order to not ruin the state of running_mean/variance and bn_weight/bias
+        # we finetunning on the copied model instead of self.net
+        net = deepcopy(self.net)
+
+        # pretrain
+        # 1. run the i-th task and compute loss for k=0
+        logits = net(train_x)
+        loss = loss_func(logits, train_y)
+        grad = torch.autograd.grad(loss, net.parameters())
+        fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, net.parameters())))
+
+        for k in range(1, self.update_step_test):
+            # 1. run the i-th task and compute loss for k=1~K-1
+            logits = net(train_x, fast_weights, bn_training=True)
+            loss = loss_func(logits, train_y)
+            # 2. compute grad on theta_pi
+            grad = torch.autograd.grad(loss, fast_weights)
+            # 3. theta_pi = theta_pi - train_lr * grad
+            fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, fast_weights)))
+
+        # 1. run the i-th task and compute loss for k=0
+        logits = net(x_spt)
+        loss = loss_func(logits, y_spt)
+        grad = torch.autograd.grad(loss, net.parameters())
+        fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, net.parameters())))
+        losses = []
+
+        for k in range(1, self.update_step_test):
+            # 1. run the i-th task and compute loss for k=1~K-1
+            logits = net(x_spt, fast_weights, bn_training=True)
+            loss = loss_func(logits, y_spt)
+            # 2. compute grad on theta_pi
+            grad = torch.autograd.grad(loss, fast_weights)
+            # 3. theta_pi = theta_pi - train_lr * grad
+            fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, fast_weights)))
+
+            logits_q = net(x_qry, fast_weights, bn_training=True)
+            # loss_q will be overwritten and just keep the loss_q on last update step.
+            losses.append(loss_func(logits_q, y_qry).item())
+
+        del net
+
+        return losses[-1] if return_single_lose else losses, logits_q

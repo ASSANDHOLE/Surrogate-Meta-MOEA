@@ -100,7 +100,7 @@ class Sol:
                 print(f'Epoch {epoch:4d}: {loss_arr[-1]:.4f}')
         return loss_arr
 
-    def test(self, return_single_loss: bool = True) -> Tuple[np.ndarray, float | List[float]]:
+    def test(self, return_single_loss: bool = True, pretrain: bool = False) -> Tuple[np.ndarray, float | List[float]]:
         """
         Test the model
 
@@ -115,7 +115,13 @@ class Sol:
             The first element is the output of the model
             The second element is the loss of the model
         """
-        loss, res = self.maml.finetunning(*self.test_set, return_single_lose=return_single_loss)
+        if not pretrain:
+            loss, res = self.maml.finetunning(*self.test_set, return_single_lose=return_single_loss)
+        else:
+            train_x = self.train_set[0].reshape((1, -1, self.train_set[0].shape[-1]))
+            train_y = self.train_set[1].reshape((1, -1, 1))
+            loss, res = self.maml.pretrain_finetunning(train_x, train_y, *self.test_set,
+                                                       return_single_lose=return_single_loss)
         return res, loss
 
 
@@ -146,7 +152,7 @@ def main_sinewave():
 
     args.update_step_test = int(1.5 * args.update_step_test)
     sol = Sol(dataset, args, network_structure)
-    random_res, random_loss = sol.test(return_single_loss=False)
+    random_res, random_loss = sol.test(return_single_loss=False, pretrain=True)
     print(f'Random loss: {random_loss[-1]:.4f}')
     visualize_loss(test_loss, random_loss)
 
