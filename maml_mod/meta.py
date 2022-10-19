@@ -128,14 +128,14 @@ class Meta(nn.Module):
 
         return loss_q.item()
 
-    def finetunning(self, x_spt, y_spt, x_qry, y_qry, retrun_single_lose=True):
+    def finetunning(self, x_spt, y_spt, x_qry, y_qry, return_single_lose=True):
         """
 
         :param x_spt:   [setsz, c_, h, w]
         :param y_spt:   [setsz]
         :param x_qry:   [querysz, c_, h, w]
         :param y_qry:   [querysz]
-        :param retrun_single_lose: if True, return a single loss, else return a list of losses
+        :param return_single_lose: if True, return a single loss, else return a list of losses
         :return:
         """
         loss_func = F.mse_loss
@@ -182,5 +182,5 @@ class Meta(nn.Module):
 
         del net
 
-        return losses[-1] if retrun_single_lose else losses, logits_q
+        return losses[-1] if return_single_lose else losses, logits_q
 

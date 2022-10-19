@@ -7,6 +7,7 @@ import numpy as np
 import torch
 
 from maml_mod import Meta
+from visualization import visualize_loss
 
 from utils import NamedDict
 from example import get_args, get_network_structure, get_dataset
@@ -99,9 +100,14 @@ class Sol:
                 print(f'Epoch {epoch:4d}: {loss_arr[-1]:.4f}')
         return loss_arr
 
-    def test(self) -> Tuple[np.ndarray, float]:
+    def test(self, return_single_loss: bool = True) -> Tuple[np.ndarray, float | List[float]]:
         """
         Test the model
+
+        Parameters
+        ----------
+        return_single_loss : bool
+            If True, the loss of each gradient update will be returned
 
         Returns
         -------
@@ -109,12 +115,11 @@ class Sol:
             The first element is the output of the model
             The second element is the loss of the model
         """
-        loss, res = self.maml.finetunning(*self.test_set)
+        loss, res = self.maml.finetunning(*self.test_set, return_single_lose=return_single_loss)
         return res, loss
 
 
 def main():
-    # fixme: change the following declaration to your own
     # see Sol.__init__ for more information
     args = get_args()
     network_structure = get_network_structure(args)
@@ -133,16 +138,18 @@ def main():
 def main_sinewave():
     args = get_args_maml_regression()
     network_structure = get_network_structure_maml_regression()
-    dataset = get_dataset_sinewave(args)
+    dataset = get_dataset_sinewave(args, normalize_targets=True)
     sol = Sol(dataset, args, network_structure)
     train_loss = sol.train(explicit=5)
-    test_res, test_loss = sol.test()
-    print(f'Test loss: {test_loss:.4f}')
+    test_res, test_loss = sol.test(return_single_loss=False)
+    print(f'Test loss: {test_loss[-1]:.4f}')
 
-    args.test_update_step = 30
+    args.update_step_test = int(1.5 * args.update_step_test)
     sol = Sol(dataset, args, network_structure)
-    random_res, random_loss = sol.test()
-    print(f'Random loss: {random_loss:.4f}')
+    random_res, random_loss = sol.test(return_single_loss=False)
+    print(f'Random loss: {random_loss[-1]:.4f}')
+    visualize_loss(test_loss, random_loss)
+
 
 if __name__ == '__main__':
     # main()

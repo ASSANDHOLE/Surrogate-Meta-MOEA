@@ -7,15 +7,15 @@ from utils import NamedDict
 
 def get_args_maml_regression():
     args = NamedDict()
-    args.problem_dim = (1, 3)
-    args.train_test = (20, 3)
+    args.problem_dim = (1, 1)
+    args.train_test = (30, 3)
     args.epoch = 100
-    args.update_lr = 0.00001  # with other configs unchanged, lr=0.01 causes loss=nan, i.e., gradient explode
+    args.update_lr = 0.001
     args.meta_lr = 0.001
     args.k_spt = 20
     args.k_qry = 100
-    args.update_step = 5
-    args.update_step_test = 10
+    args.update_step = 10
+    args.update_step_test = 20
     args.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # args.device = torch.device('cpu')
     return args
@@ -24,9 +24,9 @@ def get_args_maml_regression():
 def get_network_structure_maml_regression():
     config = [
         ('linear', [40, 1]),
-        ('leakyrelu', [0.1, True]),
+        ('relu', [True]),
         ('linear', [40, 40]),
-        ('leakyrelu', [0.1, True]),
+        ('relu', [True]),
         ('linear', [1, 40]),
     ]
     return config

@@ -21,7 +21,7 @@ def get_sine_wave_sampling(amp: float = 1, phase: float = 0, num_points: int = 1
 
 def create_dataset_sinewave(problem_dim: Tuple[int, int], train_test: Tuple[int, int], spt_qry: Tuple[int, int],
                             amp: Tuple[float, float] = (0.1, 5.0), phase: Tuple[float, float] = (0.1, math.pi),
-                            domain: Tuple[float, float] = (-5.0, 5.0)) -> \
+                            domain: Tuple[float, float] = (-5.0, 5.0), normalize_targets=True) -> \
         Tuple[
             Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
             Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
@@ -45,6 +45,8 @@ def create_dataset_sinewave(problem_dim: Tuple[int, int], train_test: Tuple[int,
         The phase range
     domain : Tuple[float, float]
         The domain of input
+    normalize_targets : bool
+        Whether to normalize the target values
 
     Returns
     -------
@@ -82,6 +84,19 @@ def create_dataset_sinewave(problem_dim: Tuple[int, int], train_test: Tuple[int,
 
     train_spt_x, train_spt_y, train_qry_x, train_qry_y = create_dataset_inner(train_test[0])
     test_spt_x, test_spt_y, test_qry_x, test_qry_y = create_dataset_inner(train_test[1])
+    train_set = [train_spt_x, train_spt_y, train_qry_x, train_qry_y]
+    test_set = [test_spt_x, test_spt_y, test_qry_x, test_qry_y]
+    if normalize_targets:
+        minimum = np.min(np.concatenate([train_set[1], test_set[1]]), axis=None)
+        train_set[1] -= minimum
+        test_set[1] -= minimum
+        train_set[3] -= minimum
+        test_set[3] -= minimum
+        maximum = np.max(np.concatenate([train_set[1], test_set[1]]), axis=None)
+        train_set[1] /= maximum
+        test_set[1] /= maximum
+        train_set[3] /= maximum
+        test_set[3] /= maximum
     return (train_spt_x, train_spt_y, train_qry_x, train_qry_y), (test_spt_x, test_spt_y, test_qry_x, test_qry_y)
 
 
