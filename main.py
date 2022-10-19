@@ -1,4 +1,5 @@
 # Unified MAML for this project
+from __future__ import annotations
 
 from typing import Tuple, List
 
@@ -9,6 +10,7 @@ from maml_mod import Meta
 
 from utils import NamedDict
 from example import get_args, get_network_structure, get_dataset
+from example_sinewave import get_args_maml_regression, get_network_structure_maml_regression, get_dataset_sinewave
 
 
 class Sol:
@@ -128,5 +130,20 @@ def main():
     print(f'Random loss: {random_loss:.4f}')
 
 
+def main_sinewave():
+    args = get_args_maml_regression()
+    network_structure = get_network_structure_maml_regression()
+    dataset = get_dataset_sinewave(args)
+    sol = Sol(dataset, args, network_structure)
+    train_loss = sol.train(explicit=5)
+    test_res, test_loss = sol.test()
+    print(f'Test loss: {test_loss:.4f}')
+
+    args.test_update_step = 30
+    sol = Sol(dataset, args, network_structure)
+    random_res, random_loss = sol.test()
+    print(f'Random loss: {random_loss:.4f}')
+
 if __name__ == '__main__':
-    main()
+    # main()
+    main_sinewave()
