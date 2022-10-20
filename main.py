@@ -122,10 +122,6 @@ class Sol:
         if not pretrain:
             loss, res, _nets, _fast_weights = self.maml.fine_tuning(*self.test_set,
                                                                     return_single_lose=return_single_loss)
-            if self.nets is not None:
-                del self.nets
-            if self.fast_weights is not None:
-                del self.fast_weights
             self.nets = _nets
             self.fast_weights = _fast_weights
 
@@ -161,7 +157,6 @@ class Sol:
 
         _, _, _nets, _fast_weights = self.maml.fine_tuning_continue(self.nets, self.fast_weights, x, y, *((None,) * 4),
                                                                     return_single_lose=return_single_loss)
-        del self.nets, self.fast_weights
         self.nets = _nets
         self.fast_weights = _fast_weights
 
@@ -182,7 +177,13 @@ def main():
     test_loss = sol.test(return_single_loss=False)
     mean_test_loss = np.mean(test_loss, axis=0)
     print(f'Test loss: {mean_test_loss[-1]:.4f}')
-    print(sol(np.array([i * 0.1 for i in range(1, 1 + 8)], np.float32)))
+    x_test = np.array([i * 0.1 for i in range(1, 1 + 8)], np.float32)
+    y_pred = sol(x_test)
+    y_true = [y + 1 for y in y_pred]  # add some noise for testing
+    sol.test_continue(np.array([x_test] * 3), np.array(y_true, np.float32).reshape((3, 1)))
+    y_pred_1 = sol(x_test)
+    print(f'Prediction: {y_pred}')
+    print(f'Prediction after continue: {y_pred_1}')
 
     # args.update_step_test = int(1.5 * args.update_step_test)
     sol = Sol(dataset, args, network_structure)
