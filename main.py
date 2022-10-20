@@ -6,19 +6,20 @@ from typing import Tuple, List
 import numpy as np
 import torch
 
-from maml_mod import Meta
+from maml_mod import Meta, Learner
 from visualization import visualize_loss
 
 from utils import NamedDict
-from example import get_args, get_network_structure, get_dataset
-from example_sinewave import get_args_maml_regression, get_network_structure_maml_regression, get_dataset_sinewave
+from examples.example import get_args, get_network_structure, get_dataset
+from examples.example_sinewave import get_args_maml_regression, get_network_structure_maml_regression, \
+    get_dataset_sinewave
 
 
 class Sol:
     def __init__(self,
                  dataset: Tuple[
                      Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
-                     Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+                     Tuple[np.ndarray, np.ndarray, np.ndarray | None, np.ndarray | None]
                  ],
                  args: NamedDict,
                  network_structure: List[Tuple[str, list | None]]
@@ -30,7 +31,7 @@ class Sol:
         ----------
         dataset : Tuple[
             Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
-            Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+            Tuple[np.ndarray, np.ndarray, np.ndarray | None, np.ndarray | None]
         ]
             The first element is the training set [support set, support label, query set, query label]
             The second element is the test set [support set, support label, query set, query label]
@@ -53,6 +54,8 @@ class Sol:
         self.maml = Meta(self.args, self.network_structure).to(self.device)
         self._check_integrity()
         self.dateset_to_device()
+        self.nets: List[Learner] = None
+        self.fast_weights: List[list] = None
 
     def _check_integrity(self) -> None:
         """
@@ -100,7 +103,7 @@ class Sol:
                 print(f'Epoch {epoch:4d}: {loss_arr[-1]:.4f}')
         return loss_arr
 
-    def test(self, return_single_loss: bool = True, pretrain: bool = False) -> Tuple[np.ndarray, float | List[float]]:
+    def test(self, return_single_loss: bool = True, pretrain: bool = False) -> List[List[float] | float] | None:
         """
         Test the model
 
@@ -108,21 +111,65 @@ class Sol:
         ----------
         return_single_loss : bool
             If True, the loss of each gradient update will be returned
+        pretrain : bool
+            If True, pretrain the model using the train support set first
 
         Returns
         -------
-        Tuple[np.ndarray, float]:
-            The first element is the output of the model
-            The second element is the loss of the model
+        List[List[float] | float] | None:
+            The loss of the model for each task, None if no test query set is provided
         """
         if not pretrain:
-            loss, res = self.maml.finetunning(*self.test_set, return_single_lose=return_single_loss)
+            loss, res, _nets, _fast_weights = self.maml.fine_tuning(*self.test_set,
+                                                                    return_single_lose=return_single_loss)
+            if self.nets is not None:
+                del self.nets
+            if self.fast_weights is not None:
+                del self.fast_weights
+            self.nets = _nets
+            self.fast_weights = _fast_weights
+
         else:
-            train_x = self.train_set[0].reshape((1, -1, self.train_set[0].shape[-1]))
-            train_y = self.train_set[1].reshape((1, -1, 1))
-            loss, res = self.maml.pretrain_finetunning(train_x, train_y, *self.test_set,
-                                                       return_single_lose=return_single_loss)
-        return res, loss
+            # train_x = torch.cat([self.train_set[0], self.train_set[2]], dim=1)
+            # train_y = torch.cat([self.train_set[1], self.train_set[3]], dim=1)
+            train_x = self.train_set[0]
+            train_y = self.train_set[1]
+            train_x = train_x.reshape((1, -1, train_x.shape[-1]))
+            train_y = train_y.reshape((1, -1, 1))
+            loss = self.maml.pretrain_fine_tuning(train_x, train_y, *self.test_set,
+                                                  return_single_lose=return_single_loss)
+        return loss
+
+    def test_continue(self, x: np.ndarray, y: np.ndarray, return_single_loss: bool = True) -> None:
+        """
+        Test the model based on previous fine-tuned model
+
+        Parameters
+        ----------
+        x : np.ndarray
+            The new data for training
+        y : np.ndarray
+            The label of the new data
+        return_single_loss : bool
+            If True, the loss of each gradient update will be returned
+        """
+        if self.nets is None or self.fast_weights is None:
+            raise ValueError('No previous fine-tuned model found, please use `test` instead')
+
+        x, y = torch.from_numpy(x), torch.from_numpy(y)
+        x, y = x.to(self.device), y.to(self.device)
+
+        _, _, _nets, _fast_weights = self.maml.fine_tuning_continue(self.nets, self.fast_weights, x, y, *((None,) * 4),
+                                                                    return_single_lose=return_single_loss)
+        del self.nets, self.fast_weights
+        self.nets = _nets
+        self.fast_weights = _fast_weights
+
+    def __call__(self, x: np.ndarray) -> List[float]:
+        if self.nets is None or self.fast_weights is None:
+            raise ValueError('No previous fine-tuned model found, please use `test` instead')
+        x = torch.from_numpy(x).to(self.device)
+        return [net(x, self.fast_weights[i]).detach().cpu().numpy().flatten()[0] for i, net in enumerate(self.nets)]
 
 
 def main():
@@ -131,14 +178,19 @@ def main():
     network_structure = get_network_structure(args)
     dataset = get_dataset(args, normalize_targets=True)
     sol = Sol(dataset, args, network_structure)
-    train_loss = sol.train(explicit=5)
-    test_res, test_loss = sol.test()
-    print(f'Test loss: {test_loss:.4f}')
+    train_loss = sol.train(explicit=False)
+    test_loss = sol.test(return_single_loss=False)
+    mean_test_loss = np.mean(test_loss, axis=0)
+    print(f'Test loss: {mean_test_loss[-1]:.4f}')
+    print(sol(np.array([i * 0.1 for i in range(1, 1 + 8)], np.float32)))
 
-    args.test_update_step = 30
+    # args.update_step_test = int(1.5 * args.update_step_test)
     sol = Sol(dataset, args, network_structure)
-    random_res, random_loss = sol.test()
-    print(f'Random loss: {random_loss:.4f}')
+    random_loss = sol.test(pretrain=True, return_single_loss=False)
+    mean_random_loss = np.mean(random_loss, axis=0)
+    print(f'Random loss: {mean_random_loss[-1]:.4f}')
+
+    visualize_loss(test_loss, random_loss)
 
 
 def main_sinewave():
@@ -147,16 +199,17 @@ def main_sinewave():
     dataset = get_dataset_sinewave(args, normalize_targets=True)
     sol = Sol(dataset, args, network_structure)
     train_loss = sol.train(explicit=5)
-    test_res, test_loss = sol.test(return_single_loss=False)
-    print(f'Test loss: {test_loss[-1]:.4f}')
+    test_loss = sol.test(return_single_loss=False)
+    mean_test_loss = np.mean(test_loss, axis=0)
+    print(f'Test loss: {mean_test_loss[-1]:.4f}')
 
     args.update_step_test = int(1.5 * args.update_step_test)
     sol = Sol(dataset, args, network_structure)
-    random_res, random_loss = sol.test(return_single_loss=False, pretrain=True)
+    random_loss = sol.test(return_single_loss=False, pretrain=True)
     print(f'Random loss: {random_loss[-1]:.4f}')
-    visualize_loss(test_loss, random_loss)
+    visualize_loss(mean_test_loss, random_loss)
 
 
 if __name__ == '__main__':
-    # main()
-    main_sinewave()
+    main()
+    # main_sinewave()

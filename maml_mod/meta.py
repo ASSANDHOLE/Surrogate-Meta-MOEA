@@ -128,7 +128,7 @@ class Meta(nn.Module):
 
         return loss_q.item()
 
-    def finetunning(self, x_spt, y_spt, x_qry, y_qry, return_single_lose=True):
+    def _fine_tuning(self, x_spt, y_spt, x_qry, y_qry, net=None, return_single_lose=True):
         """
 
         :param x_spt:   [setsz, c_, h, w]
@@ -142,23 +142,23 @@ class Meta(nn.Module):
 
         assert len(x_spt.shape) >= 2
 
-        querysz = x_qry.size(0)
+        query_size = x_qry.size(0)
+        if query_size != 0:
+            if len(y_qry.shape) == 1:
+                y_qry = y_qry.unsqueeze(1)
 
-        if len(y_qry.shape) == 1:
-            y_qry = y_qry.unsqueeze(1)
+            if y_qry.shape[-1] != 1:
+                y_qry = y_qry.unsqueeze(-1)
 
         if len(y_spt.shape) == 1:
             y_spt = y_spt.unsqueeze(1)
-
-        if y_qry.shape[-1] != 1:
-            y_qry = y_qry.unsqueeze(-1)
 
         if y_spt.shape[-1] != 1:
             y_spt = y_spt.unsqueeze(-1)
 
         # in order to not ruin the state of running_mean/variance and bn_weight/bias
         # we finetunning on the copied model instead of self.net
-        net = deepcopy(self.net)
+        net = deepcopy(net) if net is not None else deepcopy(self.net)
 
         # 1. run the i-th task and compute loss for k=0
         logits = net(x_spt)
@@ -176,15 +176,88 @@ class Meta(nn.Module):
             # 3. theta_pi = theta_pi - train_lr * grad
             fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, fast_weights)))
 
-            logits_q = net(x_qry, fast_weights, bn_training=True)
-            # loss_q will be overwritten and just keep the loss_q on last update step.
-            losses.append(loss_func(logits_q, y_qry).item())
+            if query_size != 0:
+                logits_q = net(x_qry, fast_weights, bn_training=True)
+                # loss_q will be overwritten and just keep the loss_q on last update step.
+                losses.append(loss_func(logits_q, y_qry).item())
 
-        del net
+        ret_loss = losses[-1] if return_single_lose else losses
 
-        return losses[-1] if return_single_lose else losses, logits_q
+        return None if query_size == 0 else ret_loss, None if query_size == 0 else logits_q, net, fast_weights
 
-    def pretrain_finetunning(self, train_x, train_y, x_spt, y_spt, x_qry, y_qry, return_single_lose=True):
+    def fine_tuning(self, x_spt, y_spt, x_qry, y_qry, net=None, return_single_lose=True):
+        n_net = x_spt.size(0)
+        ret = [[], [], [], []]
+        for i in range(n_net):
+            x, y = x_spt[i].reshape(1, *x_spt.size()[1:]), y_spt[i].reshape(1, *y_spt.size()[1:])
+            x_q, y_q = x_qry[i].reshape(1, *x_qry.size()[1:]), y_qry[i].reshape(1, *y_qry.size()[1:])
+            t_loss, t_logits, t_net, t_weights = self._fine_tuning(x, y, x_q, y_q, net, return_single_lose)
+            ret[0].append(t_loss)
+            ret[1].append(t_logits)
+            ret[2].append(t_net)
+            ret[3].append(t_weights)
+        return tuple(ret)
+
+    def _fine_tuning_continue(self, net, fast_weights, x, y, x_spt, y_spt, x_qry, y_qry, return_single_lose=True):
+        loss_func = F.mse_loss
+        assert len(x_spt.shape) >= 2
+        query_size = x_qry.size(0)
+
+        if query_size != 0:
+            if len(y_qry.shape) == 1:
+                y_qry = y_qry.unsqueeze(1)
+
+            if y_qry.shape[-1] != 1:
+                y_qry = y_qry.unsqueeze(-1)
+
+        if len(y_spt.shape) == 1:
+            y_spt = y_spt.unsqueeze(1)
+
+        if y_spt.shape[-1] != 1:
+            y_spt = y_spt.unsqueeze(-1)
+
+        net = deepcopy(net)
+        fast_weights = deepcopy(fast_weights)
+        losses = []
+
+        if x_spt is not None:
+            x_spt = torch.cat([x_spt, x], 0)
+            y_spt = torch.cat([y_spt, y], 0)
+        else:
+            x_spt = x
+            y_spt = y
+
+        for k in range(0, self.update_step_test):
+            logits = net(x_spt, fast_weights, bn_training=True)
+            loss = loss_func(logits, y_spt)
+            grad = torch.autograd.grad(loss, fast_weights)
+            fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, fast_weights)))
+            if query_size != 0:
+                logits_q = net(x_qry, fast_weights, bn_training=True)
+                # loss_q will be overwritten and just keep the loss_q on last update step.
+                losses.append(loss_func(logits_q, y_qry).item())
+
+        ret_loss = losses[-1] if return_single_lose else losses
+
+        return None if query_size == 0 else ret_loss, None if query_size == 0 else logits_q, net, fast_weights
+
+    def fine_tuning_continue(self, nets, fast_weights, x, y, x_spt, y_spt, x_qry, y_qry, return_single_lose=True):
+        assert x.shape[0] == len(nets)
+        n_net = len(nets)
+        ret = [[], [], [], []]
+        for i in range(n_net):
+            x_s, y_s = x_spt[i].reshape(1, *x.size()[1:]), y_spt[i].reshape(1, *y.size()[1:])
+            x_q, y_q = x_qry[i].reshape(1, *x_qry.size()[1:]), y_qry[i].reshape(1, *y_qry.size()[1:])
+            t_loss, t_logits, t_net, t_weights = self._fine_tuning_continue(
+                nets[i], fast_weights[i], x[i], y[i], x_s, y_s, x_q, y_q, return_single_lose
+            )
+            ret[0].append(t_loss)
+            ret[1].append(t_logits)
+            ret[2].append(t_net)
+            ret[3].append(t_weights)
+        return tuple(ret)
+
+    def pretrain_fine_tuning(self, train_x, train_y, x_spt, y_spt, x_qry, y_qry, return_single_lose=True):
 
         loss_func = F.mse_loss
 
@@ -225,25 +298,5 @@ class Meta(nn.Module):
             fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, fast_weights)))
 
         # 1. run the i-th task and compute loss for k=0
-        logits = net(x_spt)
-        loss = loss_func(logits, y_spt)
-        grad = torch.autograd.grad(loss, net.parameters())
-        fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, net.parameters())))
-        losses = []
-
-        for k in range(1, self.update_step_test):
-            # 1. run the i-th task and compute loss for k=1~K-1
-            logits = net(x_spt, fast_weights, bn_training=True)
-            loss = loss_func(logits, y_spt)
-            # 2. compute grad on theta_pi
-            grad = torch.autograd.grad(loss, fast_weights)
-            # 3. theta_pi = theta_pi - train_lr * grad
-            fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, fast_weights)))
-
-            logits_q = net(x_qry, fast_weights, bn_training=True)
-            # loss_q will be overwritten and just keep the loss_q on last update step.
-            losses.append(loss_func(logits_q, y_qry).item())
-
-        del net
-
-        return losses[-1] if return_single_lose else losses, logits_q
+        losses, _, _, _ = self.fine_tuning(x_spt, y_spt, x_qry, y_qry, net, return_single_lose)
+        return losses

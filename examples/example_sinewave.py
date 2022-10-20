@@ -1,6 +1,10 @@
+import sys
+
+sys.path.append('..')
+
 import torch
 
-from sine_dataset import create_dataset_sinewave
+from .sine_dataset import create_dataset_sinewave
 
 from utils import NamedDict
 

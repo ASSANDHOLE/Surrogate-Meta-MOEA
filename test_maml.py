@@ -161,7 +161,7 @@ def main():
         loss = maml(train_x_spt, train_y_spt, train_x_qry, train_y_qry)
         print('epoch: {}, train loss: {}'.format(ep, loss))
 
-    maml_loss, res_maml = maml.finetunning(test_x_spt, test_y_spt, test_x_qry, test_y_qry)
+    maml_loss, res_maml = maml.fine_tuning(test_x_spt, test_y_spt, test_x_qry, test_y_qry)
     print('test loss: {}'.format(maml_loss))
 
     # baseline example
@@ -179,7 +179,7 @@ def main():
     print('baseline test loss: {}'.format(baseline_loss))
     # draw_result(test_x_qry.detach().cpu().numpy(), test_y_qry.detach().cpu().numpy(),
     #             res_maml.detach().cpu().numpy(), res_baseline.detach().cpu().numpy())
-    rand_loss, rand_maml_result = rand_maml.finetunning(test_x_spt, test_y_spt, test_x_qry, test_y_qry)
+    rand_loss, rand_maml_result = rand_maml.fine_tuning(test_x_spt, test_y_spt, test_x_qry, test_y_qry)
     print('random maml test loss: {}'.format(rand_loss))
     return baseline_loss.item(), maml_loss, rand_loss
 
