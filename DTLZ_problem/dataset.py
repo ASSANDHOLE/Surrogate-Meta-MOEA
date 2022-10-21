@@ -1,3 +1,4 @@
+from pickletools import float8
 from typing import Tuple, List
 
 import numpy as np
@@ -164,6 +165,26 @@ def create_dataset(problem_dim: Tuple[int, int], x=None, n_problem=None, spt_qry
         train_set[3] /= maximum
         test_set[3] /= maximum
     return tuple(train_set), tuple(test_set)
+
+def eval(x: np.ndarray, delta: Tuple[List[int], List[int]], n_objectives: int) -> np.ndarray:
+    """
+    Parameters
+    ----------
+    x : np.ndarray
+        The input data, shape (n_point, n_variables)
+    delta : Tuple[List[int], List[int]]
+        The delta1 and delta2
+    n_objectives: int
+        The number of objectives
+    Returns
+    -------
+    np.ndarray
+        The output data, shape (n_point, n_objectives)
+    """
+    n_variables = x.shape[1]
+    problem = DTLZ1b(n_var=n_variables, n_obj=n_objectives, delta1=delta[0], delta2=delta[1])
+    y = problem.evaluate(x)
+    return y
 
 
 def test():

@@ -9,6 +9,12 @@ import torch
 from maml_mod import Meta, Learner
 from visualization import visualize_loss
 
+from DTLZ_problem import eval
+
+from pymoo.core.problem import Problem
+from pymoo.optimize import minimize
+from pymoo.algorithms.moo.nsga2 import NSGA2
+
 from utils import NamedDict
 from examples.example import get_args, get_network_structure, get_dataset
 from examples.example_sinewave import get_args_maml_regression, get_network_structure_maml_regression, \
@@ -166,6 +172,27 @@ class Sol:
         x = torch.from_numpy(x).to(self.device)
         return [net(x, self.fast_weights[i]).detach().cpu().numpy().flatten()[0] for i, net in enumerate(self.nets)]
 
+class MyProblem(Problem):
+    def __init__(self, sol:Sol):
+        self.sol = sol
+        super().__init__(n_var=8,   # 变量数
+                         n_obj=3,   # 目标数
+                        #  n_constr=2,    # 约束数
+                         xl=np.array([0]*8, np.float32),     # 变量下界
+                         xu=np.array([1]*8, np.float32),   # 变量上界
+                         )
+
+    def _evaluate(self, x, out, *args, **kwargs):
+        x = x.astype(np.float32)
+        # 定义目标函数
+        f = []
+        for xi in x:
+            fi = self.sol(xi)
+            f.append(fi)
+        # todo
+        out["F"] = np.array(f)
+
+
 
 def main():
     # see Sol.__init__ for more information
@@ -210,7 +237,54 @@ def main_sinewave():
     print(f'Random loss: {random_loss[-1]:.4f}')
     visualize_loss(mean_test_loss, random_loss)
 
+def main_NSGA():
+    args = get_args()
+    network_structure = get_network_structure(args)
+    dataset = get_dataset(args, normalize_targets=True)
+    sol = Sol(dataset, args, network_structure)
+    train_loss = sol.train(explicit=False)
+    test_loss = sol.test(return_single_loss=False)
+
+    algorithm = NSGA2(
+        pop_size=40)
+
+    res = minimize(MyProblem(sol=sol),
+               algorithm,
+               ("n_gen", 10),
+               seed=1,
+               verbose=False)
+
+    # choose parato front and some points
+    point_num = int(res.X.shape[0] * 1.5)
+    delta = [30, 2]
+    n_objectives = res.F.shape[1]
+    X = res.X
+
+    ind = np.random.choice(40, point_num-len(X), replace=False)
+    for i in ind:
+        indv = res.pop[i]
+        X = np.row_stack((X, indv.X))
+    
+    X = X.astype(np.float32)
+
+    y_true = eval(X, delta, n_objectives)
+    y_pred = []
+    for xi in X:
+        y_pred.append(sol(xi))
+    loss_0 = np.mean(np.abs(y_true - y_pred).flatten(), axis=0)
+    
+    for i in range(point_num):
+        sol.test_continue(np.array([X[i]] * n_objectives), np.array(y_true[i], np.float32).reshape((n_objectives, 1)))
+    y_pred_1 = []
+    for xi in X:
+        y_pred_1.append(sol(xi))
+    loss_1 = np.mean(np.abs(y_true - y_pred_1).flatten(), axis=0)
+    
+    print(loss_0, loss_1)
+
+
 
 if __name__ == '__main__':
-    main()
+    # main()
     # main_sinewave()
+    main_NSGA()
