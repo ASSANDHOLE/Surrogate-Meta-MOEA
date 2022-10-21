@@ -172,14 +172,15 @@ class Sol:
         x = torch.from_numpy(x).to(self.device)
         return [net(x, self.fast_weights[i]).detach().cpu().numpy().flatten()[0] for i, net in enumerate(self.nets)]
 
+
 class MyProblem(Problem):
-    def __init__(self, sol:Sol):
+    def __init__(self, sol: Sol):
         self.sol = sol
-        super().__init__(n_var=8,   # 变量数
-                         n_obj=3,   # 目标数
-                        #  n_constr=2,    # 约束数
-                         xl=np.array([0]*8, np.float32),     # 变量下界
-                         xu=np.array([1]*8, np.float32),   # 变量上界
+        super().__init__(n_var=8,  # 变量数
+                         n_obj=3,  # 目标数
+                         #  n_constr=2,    # 约束数
+                         xl=np.array([0] * 8, np.float32),  # 变量下界
+                         xu=np.array([1] * 8, np.float32),  # 变量上界
                          )
 
     def _evaluate(self, x, out, *args, **kwargs):
@@ -193,12 +194,11 @@ class MyProblem(Problem):
         out["F"] = np.array(f)
 
 
-
 def main():
     # see Sol.__init__ for more information
     args = get_args()
     network_structure = get_network_structure(args)
-    dataset = get_dataset(args, normalize_targets=True)
+    dataset, _ = get_dataset(args, normalize_targets=True)
     sol = Sol(dataset, args, network_structure)
     train_loss = sol.train(explicit=False)
     test_loss = sol.test(return_single_loss=False)
@@ -237,6 +237,7 @@ def main_sinewave():
     print(f'Random loss: {random_loss[-1]:.4f}')
     visualize_loss(mean_test_loss, random_loss)
 
+
 def main_NSGA():
     args = get_args()
     network_structure = get_network_structure(args)
@@ -244,48 +245,54 @@ def main_NSGA():
     delta = []
     for i in range(2):
         delta.append([np.random.randint(0, 100, args.train_test[i]), np.random.randint(0, 10, args.train_test[i])])
-    dataset = get_dataset(args, normalize_targets=True, delta=delta)
+    dataset, min_max = get_dataset(args, normalize_targets=True, delta=delta)
     sol = Sol(dataset, args, network_structure)
-    train_loss = sol.train(explicit=False)
+    # train_loss = sol.train(explicit=False)
     test_loss = sol.test(return_single_loss=False)
 
-    algorithm = NSGA2(
-        pop_size=40)
+    for _ in range(10):
+        algorithm = NSGA2(
+            pop_size=40)
 
-    res = minimize(MyProblem(sol=sol),
-               algorithm,
-               ("n_gen", 10),
-               seed=1,
-               verbose=False)
+        res = minimize(MyProblem(sol=sol),
+                       algorithm,
+                       ("n_gen", 10),
+                       seed=1,
+                       verbose=False)
 
-    # choose parato front and some points
-    point_num = int(res.X.shape[0] * 1.5)
-    delta_finetune = np.array(delta[1])[:,-1]
-    n_objectives = res.F.shape[1]
-    X = res.X
+        # choose parato front and some points
+        point_num = int(res.X.shape[0] * 1.5)
+        delta_finetune = np.array(delta[1])[:, -1]
+        n_objectives = res.F.shape[1]
+        X = res.X
 
-    ind = np.random.choice(40, point_num-len(X), replace=False)
-    for i in ind:
-        indv = res.pop[i]
-        X = np.row_stack((X, indv.X))
-    
-    X = X.astype(np.float32)
+        ind = np.random.choice(40, point_num - len(X), replace=False)
+        for i in ind:
+            indv = res.pop[i]
+            X = np.row_stack((X, indv.X))
 
-    y_true = evaluate(X, delta_finetune, n_objectives)
-    y_pred = []
-    for xi in X:
-        y_pred.append(sol(xi))
-    loss_0 = np.mean(np.abs(y_true - y_pred).flatten(), axis=0)
-    
-    for i in range(point_num):
-        sol.test_continue(np.array([X[i]] * n_objectives), np.array(y_true[i], np.float32).reshape((n_objectives, 1)))
-    y_pred_1 = []
-    for xi in X:
-        y_pred_1.append(sol(xi))
-    loss_1 = np.mean(np.abs(y_true - y_pred_1).flatten(), axis=0)
-    
-    print(loss_0, loss_1)
+        X = X.astype(np.float32)
 
+        y_true = evaluate(X, delta_finetune, n_objectives, min_max=min_max)
+        y_pred = []
+        for xi in X:
+            y_pred.append(sol(xi))
+        loss_0 = np.mean(np.abs(y_true - y_pred).flatten(), axis=0)
+
+        new_y_true = []
+        for i in range(n_objectives):
+            new_y_true.append(y_true[:, i])
+        new_y_true = np.array(new_y_true, dtype=np.float32)
+        new_y_true = new_y_true.reshape((*new_y_true.shape, 1))
+
+        sol.test_continue(X, new_y_true)
+
+        y_pred_1 = []
+        for xi in X:
+            y_pred_1.append(sol(xi))
+        loss_1 = np.mean(np.abs(y_true - y_pred_1).flatten(), axis=0)
+
+        print(loss_0, loss_1)
 
 
 if __name__ == '__main__':

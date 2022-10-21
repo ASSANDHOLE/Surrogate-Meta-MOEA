@@ -1,4 +1,5 @@
-from pickletools import float8
+from __future__ import annotations
+
 from typing import Tuple, List
 
 import numpy as np
@@ -100,10 +101,12 @@ def create_dataset_inner(x, n_dim: Tuple[int, int], delta: Tuple[List[int], List
     return new_x, y
 
 
-def create_dataset(problem_dim: Tuple[int, int], x=None, n_problem=None, spt_qry=None, delta=None, normalize_targets=True, **_) -> Tuple[
-    Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
-    Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
-]:
+def create_dataset(problem_dim: Tuple[int, int], x=None, n_problem=None, spt_qry=None, delta=None,
+                   normalize_targets=True, **_) -> Tuple[
+    Tuple[
+        Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+        Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+        ], Tuple[float | None, float | None]]:
     """
     Parameters
     ----------
@@ -124,11 +127,17 @@ def create_dataset(problem_dim: Tuple[int, int], x=None, n_problem=None, spt_qry
     Returns
     -------
     Tuple[
-        Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
-        Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+        Tuple[
+            Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+            Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+        ],
+        Tuple[float | None, float | None]
     ]
-        The first element is the training set [support set, support label, query set, query label]
-        The second element is the test set [support set, support label, query set, query label]
+        In the first Tuple:
+            The first element is the training set [support set, support label, query set, query label]
+            The second element is the test set [support set, support label, query set, query label]
+        In the second Tuple:
+            The minimum and maximum of the targets (to be used for normalization)
     """
     n_var, n_obj = problem_dim
     if x is not None:
@@ -163,9 +172,14 @@ def create_dataset(problem_dim: Tuple[int, int], x=None, n_problem=None, spt_qry
         test_set[1] /= maximum
         train_set[3] /= maximum
         test_set[3] /= maximum
-    return tuple(train_set), tuple(test_set)
+    else:
+        maximum = None
+        minimum = None
+    return (tuple(train_set), tuple(test_set)), (minimum, maximum)
 
-def evaluate(x: np.ndarray, delta: Tuple[List[int], List[int]], n_objectives: int) -> np.ndarray:
+
+def evaluate(x: np.ndarray, delta: Tuple[List[int], List[int]],
+             n_objectives: int, min_max: Tuple[float | None, float | None]) -> np.ndarray:
     """
     Parameters
     ----------
@@ -175,6 +189,9 @@ def evaluate(x: np.ndarray, delta: Tuple[List[int], List[int]], n_objectives: in
         The delta1 and delta2
     n_objectives: int
         The number of objectives
+    min_max : Tuple[float | None, float | None]
+        The minimum and maximum of the targets, if None, the targets will not be normalized
+
     Returns
     -------
     np.ndarray
@@ -183,6 +200,9 @@ def evaluate(x: np.ndarray, delta: Tuple[List[int], List[int]], n_objectives: in
     n_variables = x.shape[1]
     problem = DTLZ1b(n_var=n_variables, n_obj=n_objectives, delta1=delta[0], delta2=delta[1])
     y = problem.evaluate(x)
+    if min_max[0] is not None:
+        y -= min_max[0]
+        y /= min_max[1]
     return y
 
 
