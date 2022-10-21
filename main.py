@@ -240,7 +240,11 @@ def main_sinewave():
 def main_NSGA():
     args = get_args()
     network_structure = get_network_structure(args)
-    dataset = get_dataset(args, normalize_targets=True)
+    # generate delta
+    delta = []
+    for i in range(2):
+        delta.append([np.random.randint(0, 100, args.train_test[i]), np.random.randint(0, 10, args.train_test[i])])
+    dataset = get_dataset(args, normalize_targets=True, delta=delta)
     sol = Sol(dataset, args, network_structure)
     train_loss = sol.train(explicit=False)
     test_loss = sol.test(return_single_loss=False)
@@ -256,7 +260,7 @@ def main_NSGA():
 
     # choose parato front and some points
     point_num = int(res.X.shape[0] * 1.5)
-    delta = [30, 2]
+    delta_finetune = np.array(delta[1])[:,-1]
     n_objectives = res.F.shape[1]
     X = res.X
 
@@ -267,7 +271,7 @@ def main_NSGA():
     
     X = X.astype(np.float32)
 
-    y_true = evaluate(X, delta, n_objectives)
+    y_true = evaluate(X, delta_finetune, n_objectives)
     y_pred = []
     for xi in X:
         y_pred.append(sol(xi))
@@ -286,5 +290,5 @@ def main_NSGA():
 
 if __name__ == '__main__':
     # main()
-    main_sinewave()
-    # main_NSGA()
+    # main_sinewave()
+    main_NSGA()
