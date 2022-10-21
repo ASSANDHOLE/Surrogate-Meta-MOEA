@@ -9,7 +9,7 @@ import torch
 from maml_mod import Meta, Learner
 from visualization import visualize_loss
 
-from DTLZ_problem import eval
+from DTLZ_problem import evaluate
 
 from pymoo.core.problem import Problem
 from pymoo.optimize import minimize
@@ -267,7 +267,7 @@ def main_NSGA():
     
     X = X.astype(np.float32)
 
-    y_true = eval(X, delta, n_objectives)
+    y_true = evaluate(X, delta, n_objectives)
     y_pred = []
     for xi in X:
         y_pred.append(sol(xi))
@@ -286,5 +286,5 @@ def main_NSGA():
 
 if __name__ == '__main__':
     # main()
-    # main_sinewave()
-    main_NSGA()
+    main_sinewave()
+    # main_NSGA()

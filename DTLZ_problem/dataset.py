@@ -112,8 +112,8 @@ def create_dataset(problem_dim: Tuple[int, int], x=None, n_problem=None, spt_qry
     x : Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
         [x_spt_train, x_qry_train, x_spt_test, x_qry_test]
         The input data, shape (4, n_problem, n_spt, n_variables)
-    delta : Tuple[train_spt_delta, train_qry_delta, test_spt_delta, test_qry_delta]
-        The delta values, shape (4, 2, n_problem)
+    delta : Tuple[train_delta,  test_delta]
+        The delta values, shape (2, 2, n_problem)
     n_problem : Tuple[int, int]
         [n_train, n_test]
     spt_qry : Tuple[int, int]
@@ -146,13 +146,12 @@ def create_dataset(problem_dim: Tuple[int, int], x=None, n_problem=None, spt_qry
         # generate delta
         delta = []
         for i in range(2):
-            for j in range(2):
-                delta1 = np.random.randint(0, 100, n_problem[i])
-                delta2 = np.random.randint(0, 10, n_problem[i])
-                delta.append([delta1, delta2])
+            delta1 = np.random.randint(0, 100, n_problem[i])
+            delta2 = np.random.randint(0, 10, n_problem[i])
+            delta.append([delta1, delta2])
 
-    train_set = [*create_dataset_inner(x[0], problem_dim, delta[0]), *create_dataset_inner(x[1], problem_dim, delta[1])]
-    test_set = [*create_dataset_inner(x[2], problem_dim, delta[2]), *create_dataset_inner(x[3], problem_dim, delta[3])]
+    train_set = [*create_dataset_inner(x[0], problem_dim, delta[0]), *create_dataset_inner(x[1], problem_dim, delta[0])]
+    test_set = [*create_dataset_inner(x[2], problem_dim, delta[1]), *create_dataset_inner(x[3], problem_dim, delta[1])]
     if normalize_targets:
         minimum = np.min(np.concatenate([train_set[1], test_set[1]]), axis=None)
         train_set[1] -= minimum
@@ -166,7 +165,7 @@ def create_dataset(problem_dim: Tuple[int, int], x=None, n_problem=None, spt_qry
         test_set[3] /= maximum
     return tuple(train_set), tuple(test_set)
 
-def eval(x: np.ndarray, delta: Tuple[List[int], List[int]], n_objectives: int) -> np.ndarray:
+def evaluate(x: np.ndarray, delta: Tuple[List[int], List[int]], n_objectives: int) -> np.ndarray:
     """
     Parameters
     ----------

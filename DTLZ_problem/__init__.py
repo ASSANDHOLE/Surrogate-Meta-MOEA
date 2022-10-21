@@ -1,1 +1,1 @@
-from .dataset import create_dataset, eval
+from .dataset import create_dataset, evaluate
