@@ -1,5 +1,6 @@
 # Unified MAML for this project
 from __future__ import annotations
+from cProfile import label
 
 from typing import Tuple, List
 
@@ -9,11 +10,14 @@ import torch
 from maml_mod import Meta, Learner
 from visualization import visualize_loss
 
-from DTLZ_problem import evaluate
+from matplotlib import pyplot as plt
+
+from DTLZ_problem import evaluate, get_pf, get_moea_data
 
 from pymoo.core.problem import Problem
 from pymoo.optimize import minimize
 from pymoo.algorithms.moo.nsga2 import NSGA2
+from pymoo.indicators.igd import IGD
 
 from utils import NamedDict
 from examples.example import get_args, get_network_structure, get_dataset
@@ -194,6 +198,33 @@ class MyProblem(Problem):
         out["F"] = np.array(f)
 
 
+def plot_pf(pf, label, color, scale=None, pf_true=None):
+    plt.figure(figsize=(8,6))
+    ax = plt.axes(projection='3d')
+    ax.scatter3D(pf[:,0], pf[:,1], pf[:,2],color=color, label=label)
+    if pf_true is not None:
+        ax.scatter3D(pf_true[:,0], pf_true[:,1], pf_true[:,2],color='y', label='True Parato Front')
+    if scale is not None:
+        ax.set_xlim(0, scale[0])
+        ax.set_ylim(0, scale[1])
+        ax.set_zlim(0, scale[2])
+    ax.legend(loc='best')
+    ax.set(xlabel="F_1", ylabel="F_2", zlabel="F_3")
+
+
+def plot_igd(func_evals, igds, colors, labels):
+    plt.figure(figsize=(8,6))
+    for i in range(len(igds)):
+        plt.plot(func_evals[i], igds[i],  color=colors[i], lw=0.7, label=labels[i])
+        plt.scatter(func_evals[i], igds[i],  facecolor="none", edgecolor=colors[i], marker="p")
+    # plt.axhline(10**-2, color="red", label="10^-2", linestyle="--")
+    plt.title("Convergence")
+    plt.xlabel("Function Evaluations")
+    plt.ylabel("IGD")
+    plt.yscale("log")
+    plt.legend()
+
+
 def main():
     # see Sol.__init__ for more information
     args = get_args()
@@ -250,34 +281,35 @@ def main_NSGA():
     # train_loss = sol.train(explicit=False)
     test_loss = sol.test(return_single_loss=False)
 
-    for _ in range(10):
-        algorithm = NSGA2(
-            pop_size=40)
+    n_var = args.problem_dim[0]
+    n_objectives = args.problem_dim[1]
+    delta_finetune = np.array(delta[1])[:, -1]
+
+    pf_true = get_pf(n_var, n_objectives, delta_finetune, min_max)
+
+    igd = []
+    x_size = []
+    fn_eval_limit = 600
+    max_pts_num = 5
+
+    while sum(x_size) < fn_eval_limit:
+
+        algorithm = NSGA2(pop_size=60)
 
         res = minimize(MyProblem(sol=sol),
                        algorithm,
                        ("n_gen", 10),
                        seed=1,
                        verbose=False)
-
-        # choose parato front and some points
-        point_num = int(res.X.shape[0] * 1.5)
-        delta_finetune = np.array(delta[1])[:, -1]
-        n_objectives = res.F.shape[1]
+        
         X = res.X
+        if len(X) > max_pts_num:
+            X = X[np.random.choice(X.shape[0], max_pts_num)]
 
-        ind = np.random.choice(40, point_num - len(X), replace=False)
-        for i in ind:
-            indv = res.pop[i]
-            X = np.row_stack((X, indv.X))
+        x_size.append(X.shape[0])
 
         X = X.astype(np.float32)
-
         y_true = evaluate(X, delta_finetune, n_objectives, min_max=min_max)
-        y_pred = []
-        for xi in X:
-            y_pred.append(sol(xi))
-        loss_0 = np.mean(np.abs(y_true - y_pred).flatten(), axis=0)
 
         new_y_true = []
         for i in range(n_objectives):
@@ -287,15 +319,27 @@ def main_NSGA():
 
         sol.test_continue(X, new_y_true)
 
-        y_pred_1 = []
-        for xi in X:
-            y_pred_1.append(sol(xi))
-        loss_1 = np.mean(np.abs(y_true - y_pred_1).flatten(), axis=0)
+        metric = IGD(pf_true, zero_to_one=True)
+        igd.append(metric.do(res.F))
+    
+    pf = evaluate(res.X, delta_finetune, n_objectives, min_max=min_max)
+    moea_pf, n_evals_moea, igd_moea = get_moea_data(n_var, n_objectives, delta_finetune, algorithm, 10, min_max)
+    n_evals_moea = n_evals_moea[:-1]
+    igd_moea = igd_moea[:-1]
 
-        print(loss_0, loss_1)
+    plot_pf(pf=pf, label='Sorrogate PF', color='green', scale=[0.5]*3, pf_true=pf_true)
+    plot_pf(pf=moea_pf, label='NSGA-II PF', color='blue', scale=[0.5]*3, pf_true=pf_true)
+
+    func_evals = [max_pts_num*np.arange(len(igd)), n_evals_moea]
+    igds = [igd, igd_moea]
+    colors = ['black', 'red']
+    labels = ["Our Surrogate Model", "NSGA-II"]
+    plot_igd(func_evals, igds, colors, labels)
+    plt.show()
 
 
 if __name__ == '__main__':
     # main()
     # main_sinewave()
     main_NSGA()
+
