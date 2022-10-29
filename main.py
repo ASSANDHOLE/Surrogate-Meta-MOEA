@@ -1,6 +1,7 @@
 # Unified MAML for this project
 from __future__ import annotations
 from cProfile import label
+from copy import deepcopy
 
 from typing import Tuple, List
 
@@ -20,6 +21,7 @@ from pymoo.algorithms.moo.nsga2 import NSGA2
 from pymoo.indicators.igd import IGD
 
 from utils import NamedDict
+from examples import train_baseline_nn
 from examples.example import get_args, get_network_structure, get_dataset
 from examples.example_sinewave import get_args_maml_regression, get_network_structure_maml_regression, \
     get_dataset_sinewave
@@ -178,13 +180,18 @@ class Sol:
 
 
 class MyProblem(Problem):
-    def __init__(self, sol: Sol):
+    def __init__(self, sol: Sol, min_max: Tuple[int, int] | None):
         self.sol = sol
-        super().__init__(n_var=8,  # 变量数
-                         n_obj=3,  # 目标数
+        args = sol.args
+        n_var, n_obj = args.problem_dim
+        if min_max is None:
+            min_max = (0, 1)
+        self.min_val, self.max_val = min_max
+        super().__init__(n_var=n_var,  # 变量数
+                         n_obj=n_obj,  # 目标数
                          #  n_constr=2,    # 约束数
-                         xl=np.array([0] * 8, np.float32),  # 变量下界
-                         xu=np.array([1] * 8, np.float32),  # 变量上界
+                         xl=np.array([0] * n_var, np.float32),  # 变量下界
+                         xu=np.array([1] * n_var, np.float32),  # 变量上界
                          )
 
     def _evaluate(self, x, out, *args, **kwargs):
@@ -247,11 +254,13 @@ def main_NSGA():
     network_structure = get_network_structure(args)
     # generate delta
     delta = []
-    for i in range(2):
-        delta.append([np.random.randint(0, 100, args.train_test[i]), np.random.randint(0, 10, args.train_test[i])])
+    # for i in range(2):
+    #     delta.append([np.random.randint(0, 100, args.train_test[i]), np.random.randint(0, 10, args.train_test[i])])
+    delta.append([np.random.randint(0, 100, args.train_test[0]), np.random.randint(0, 10, args.train_test[0])])
+    delta.append([np.array([np.mean(delta[0][0])]), np.array([np.mean(delta[0][1])])])
     dataset, min_max = get_dataset(args, normalize_targets=True, delta=delta)
     sol = Sol(dataset, args, network_structure)
-    # train_loss = sol.train(explicit=False)
+    train_loss = sol.train(explicit=False)
     test_loss = sol.test(return_single_loss=False)
 
     n_var = args.problem_dim[0]
@@ -263,15 +272,21 @@ def main_NSGA():
     igd = []
     x_size = []
     fn_eval_limit = 600
-    max_pts_num = 5
+    pop_size = 50
+    n_gen = int(fn_eval_limit / pop_size)
+    max_pts_num = 10
+
+    saved_x = None
+    saved_y = None
+
 
     while sum(x_size) < fn_eval_limit:
 
-        algorithm = NSGA2(pop_size=60)
+        algorithm = NSGA2(pop_size=pop_size)
 
-        res = minimize(MyProblem(sol=sol),
+        res = minimize(MyProblem(sol=sol, min_max=min_max),
                        algorithm,
-                       ("n_gen", 10),
+                       ("n_gen", n_gen),
                        seed=1,
                        verbose=False)
         
@@ -282,6 +297,10 @@ def main_NSGA():
         x_size.append(X.shape[0])
 
         X = X.astype(np.float32)
+        if saved_x is None:
+            saved_x = X
+        else:
+            saved_x = np.concatenate((saved_x, X))
         y_true = evaluate(X, delta_finetune, n_objectives, min_max=min_max)
 
         new_y_true = []
@@ -290,13 +309,19 @@ def main_NSGA():
         new_y_true = np.array(new_y_true, dtype=np.float32)
         new_y_true = new_y_true.reshape((*new_y_true.shape, 1))
 
-        sol.test_continue(X, new_y_true)
+        if saved_y is None:
+            saved_y = new_y_true
+        else:
+            saved_y = np.concatenate((saved_y, new_y_true), axis=1)
+
+        # sol.test_continue(X, new_y_true)
+        sol.test_continue(saved_x, saved_y)
 
         metric = IGD(pf_true, zero_to_one=True)
         igd.append(metric.do(res.F))
     
     pf = evaluate(res.X, delta_finetune, n_objectives, min_max=min_max)
-    moea_pf, n_evals_moea, igd_moea = get_moea_data(n_var, n_objectives, delta_finetune, algorithm, 10, min_max)
+    moea_pf, n_evals_moea, igd_moea = get_moea_data(n_var, n_objectives, delta_finetune, algorithm, n_gen, min_max)
     n_evals_moea = n_evals_moea[:-1]
     igd_moea = igd_moea[:-1]
 
@@ -311,8 +336,91 @@ def main_NSGA():
     plt.show()
 
 
+def main_NSGA_base():
+    args = get_args()
+    network_structure = get_network_structure(args)
+    # generate delta
+    delta = []
+    delta.append([np.random.randint(0, 100, args.train_test[0]), np.random.randint(0, 10, args.train_test[0])])
+    delta.append([np.array([np.mean(delta[0][0])]), np.array([np.mean(delta[0][1])])])
+    dataset, min_max = get_dataset(args, normalize_targets=True, delta=delta)
+
+    n_var = args.problem_dim[0]
+    n_objectives = args.problem_dim[1]
+    delta_finetune = np.array(delta[1])[:, -1]
+
+    pf_true = get_pf(n_var, n_objectives, delta_finetune, min_max)
+
+    igd = []
+    x_size = []
+    fn_eval_limit = 300
+    pop_size = 30
+    n_gen = int(fn_eval_limit / pop_size)
+    max_pts_num = 5
+
+    saved_x = None
+    saved_y = None
+
+    while sum(x_size) < fn_eval_limit:
+        sol = train_baseline_nn(None, None, args.problem_dim, init=True)
+        sol.__dict__['args'] = args
+
+        algorithm = NSGA2(pop_size=pop_size)
+
+        res = minimize(MyProblem(sol=sol, min_max=min_max),
+                       algorithm,
+                       ("n_gen", n_gen),
+                       seed=1,
+                       verbose=False)
+
+        X = res.X
+        if len(X) > max_pts_num:
+            X = X[np.random.choice(X.shape[0], max_pts_num)]
+
+        x_size.append(X.shape[0])
+
+        X = X.astype(np.float32)
+        if saved_x is None:
+            saved_x = X
+        else:
+            saved_x = np.concatenate((saved_x, X))
+        y_true = evaluate(X, delta_finetune, n_objectives, min_max=min_max)
+
+        new_y_true = []
+        for i in range(n_objectives):
+            new_y_true.append(y_true[:, i])
+        new_y_true = np.array(new_y_true, dtype=np.float32)
+        new_y_true = new_y_true.reshape((*new_y_true.shape, 1))
+
+        if saved_y is None:
+            saved_y = new_y_true
+        else:
+            saved_y = np.concatenate((saved_y, new_y_true), axis=1)
+
+        # sol.test_continue(X, new_y_true)
+        train_baseline_nn(saved_x, saved_y, args.problem_dim,
+                          init=False, lr=args.update_lr, n_epochs=100)
+
+        metric = IGD(pf_true, zero_to_one=True)
+        igd.append(metric.do(res.F))
+
+    pf = evaluate(res.X, delta_finetune, n_objectives, min_max=min_max)
+    moea_pf, n_evals_moea, igd_moea = get_moea_data(n_var, n_objectives, delta_finetune, algorithm, n_gen, min_max)
+    n_evals_moea = n_evals_moea[:-1]
+    igd_moea = igd_moea[:-1]
+
+    visualize_pf(pf=pf, label='Sorrogate PF', color='green', scale=[0.5] * 3, pf_true=pf_true)
+    visualize_pf(pf=moea_pf, label='NSGA-II PF', color='blue', scale=[0.5] * 3, pf_true=pf_true)
+
+    func_evals = [max_pts_num * np.arange(len(igd)), n_evals_moea]
+    igds = [igd, igd_moea]
+    colors = ['black', 'red']
+    labels = ["Our Surrogate Model", "NSGA-II"]
+    visualize_igd(func_evals, igds, colors, labels)
+    plt.show()
+
+
 if __name__ == '__main__':
-    # main()
-    # main_sinewave()
-    main_NSGA()
+    mains = [main, main_sinewave, main_NSGA, main_NSGA_base]
+    mains[-2]()
 

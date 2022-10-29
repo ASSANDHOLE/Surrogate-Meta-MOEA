@@ -57,7 +57,7 @@ class DTLZ1b(DTLZb):
     def _calc_pareto_front(self, ref_dirs=None):
         if ref_dirs is None:
             ref_dirs = get_ref_dirs(self.n_obj)
-        coefficient = max(0.5, 0.5*(100+self.delta1)*self.delta2)
+        coefficient = max(0.5, 0.5 * (100 + self.delta1) * self.delta2)
         return coefficient * ref_dirs
 
     def obj_func(self, X_, g):
@@ -79,15 +79,15 @@ class DTLZ1b(DTLZb):
 
 
 def pf_data(n_var: int, n_objective: int, delta1: int, delta2: int) -> np.ndarray:
-    problem = DTLZ1b(n_var=n_var, n_obj = n_objective, delta1=delta1, delta2=delta2) # change delta here
+    problem = DTLZ1b(n_var=n_var, n_obj=n_objective, delta1=delta1, delta2=delta2)  # change delta here
     ref_dirs = get_reference_directions("das-dennis", n_objective, n_partitions=12)
     N = ref_dirs.shape[0]
     # create the algorithm object
     algorithm = NSGA3(pop_size=N, ref_dirs=ref_dirs)
     # execute the optimization
     res = minimize(problem,
-                algorithm,
-                termination=('n_gen', 100))
+                   algorithm,
+                   termination=('n_gen', 100))
     return res.X
 
 
@@ -126,7 +126,7 @@ def create_dataset(problem_dim: Tuple[int, int], x=None, n_problem=None, spt_qry
     Tuple[
         Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
         Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
-        ], Tuple[float | None, float | None]]:
+    ], Tuple[float | None, float | None]]:
     """
     Parameters
     ----------
@@ -170,7 +170,7 @@ def create_dataset(problem_dim: Tuple[int, int], x=None, n_problem=None, spt_qry
             delta1 = np.random.randint(0, 100, n_problem[i])
             delta2 = np.random.randint(0, 10, n_problem[i])
             delta.append([delta1, delta2])
-    
+
     if x is not None:
         assert len(x) == 4
     else:
@@ -233,7 +233,9 @@ def evaluate(x: np.ndarray, delta: Tuple[int, int],
         y /= min_max[1]
     return y
 
-def get_pf(n_var: int, n_objectives: int, delta: Tuple[int, int], min_max: Tuple[float | None, float | None]) -> np.ndarray:
+
+def get_pf(n_var: int, n_objectives: int, delta: Tuple[int, int],
+           min_max: Tuple[float | None, float | None]) -> np.ndarray:
     """
     Parameters
     ----------
@@ -251,7 +253,7 @@ def get_pf(n_var: int, n_objectives: int, delta: Tuple[int, int], min_max: Tuple
     np.ndarray
         The parato front, shape (n_point, n_objectives)
     """
-    problem = DTLZ1b(n_var = n_var, n_obj = n_objectives, delta1=delta[0], delta2=delta[1])
+    problem = DTLZ1b(n_var=n_var, n_obj=n_objectives, delta1=delta[0], delta2=delta[1])
     ref_dirs = get_reference_directions("das-dennis", n_objectives, n_partitions=12)
     pf = problem.pareto_front(ref_dirs)
     if min_max[0] is not None:
@@ -259,8 +261,10 @@ def get_pf(n_var: int, n_objectives: int, delta: Tuple[int, int], min_max: Tuple
         pf /= min_max[1]
     return pf
 
-def get_moea_data(n_var: int, n_objectives: int, delta: Tuple[int, int], algorithm, n_gen: int, min_max: Tuple[float | None, float | None]) -> Tuple[
-    np.ndarray, np.ndarray, np.ndarray, np.ndarray
+
+def get_moea_data(n_var: int, n_objectives: int, delta: Tuple[int, int], algorithm, n_gen: int,
+                  min_max: Tuple[float | None, float | None]) -> Tuple[
+    np.ndarray, list, list
 ]:
     """
     Parameters
@@ -280,21 +284,21 @@ def get_moea_data(n_var: int, n_objectives: int, delta: Tuple[int, int], algorit
 
     Returns
     -------
-    Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+    Tuple[np.ndarray, list, list]
         moea_pf: The parato front, shape (n_point, n_objectives)
         n_evals: The number of function evaluations
         igd: The IGD
     """
-    problem = DTLZ1b(n_var = n_var, n_obj = n_objectives, delta1=delta[0], delta2=delta[1]) # change delta here
+    problem = DTLZ1b(n_var=n_var, n_obj=n_objectives, delta1=delta[0], delta2=delta[1])  # change delta here
     res = minimize(problem,
-                algorithm,
-                termination=('n_gen', n_gen),
-                save_history=True,
-                verbose=False)
+                   algorithm,
+                   termination=('n_gen', n_gen),
+                   save_history=True,
+                   verbose=False)
     moea_pf = res.F
 
     hist = res.history
-    hist_F,n_evals = [],[]
+    hist_F, n_evals = [], []
     for algo in hist:
         n_evals.append(algo.evaluator.n_eval)
         opt = algo.opt
@@ -307,6 +311,7 @@ def get_moea_data(n_var: int, n_objectives: int, delta: Tuple[int, int], algorit
         moea_pf -= min_max[0]
         moea_pf /= min_max[1]
     return moea_pf, n_evals, igd
+
 
 def test():
     n_dim = (8, 3)
