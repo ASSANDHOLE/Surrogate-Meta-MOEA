@@ -5,6 +5,10 @@ from typing import Tuple, List
 import numpy as np
 from pymoo.core.problem import Problem
 from pymoo.problems.many.dtlz import get_ref_dirs
+from pymoo.util.ref_dirs import get_reference_directions
+from pymoo.optimize import minimize
+from pymoo.indicators.igd import IGD
+from pymoo.algorithms.moo.nsga3 import NSGA3
 
 
 class DTLZb(Problem):
@@ -46,12 +50,15 @@ class DTLZb(Problem):
 
 class DTLZ1b(DTLZb):
     def __init__(self, n_var=7, n_obj=3, delta1=0, delta2=0, **kwargs):
+        self.delta1 = delta1
+        self.delta2 = delta2
         super().__init__(n_var, n_obj, delta1, delta2, **kwargs)
 
     def _calc_pareto_front(self, ref_dirs=None):
         if ref_dirs is None:
             ref_dirs = get_ref_dirs(self.n_obj)
-        return 0.5 * ref_dirs
+        coefficient = max(0.5, 0.5*(100+self.delta1)*self.delta2)
+        return coefficient * ref_dirs
 
     def obj_func(self, X_, g):
         f = []
@@ -69,6 +76,19 @@ class DTLZ1b(DTLZb):
         X_, X_M = x[:, :self.n_obj - 1], x[:, self.n_obj - 1:]
         g = self.g1(X_M)
         out["F"] = self.obj_func(X_, g)
+
+
+def pf_data(n_var: int, n_objective: int, delta1: int, delta2: int) -> np.ndarray:
+    problem = DTLZ1b(n_var=n_var, n_obj = n_objective, delta1=delta1, delta2=delta2) # change delta here
+    ref_dirs = get_reference_directions("das-dennis", n_objective, n_partitions=12)
+    N = ref_dirs.shape[0]
+    # create the algorithm object
+    algorithm = NSGA3(pop_size=N, ref_dirs=ref_dirs)
+    # execute the optimization
+    res = minimize(problem,
+                algorithm,
+                termination=('n_gen', 100))
+    return res.X
 
 
 def create_dataset_inner(x, n_dim: Tuple[int, int], delta: Tuple[List[int], List[int]]) -> Tuple[
@@ -140,17 +160,9 @@ def create_dataset(problem_dim: Tuple[int, int], x=None, n_problem=None, spt_qry
             The minimum and maximum of the targets (to be used for normalization)
     """
     n_var, n_obj = problem_dim
-    if x is not None:
-        assert len(x) == 4
-    else:
-        # generate x
-        x = []
-        for i in range(2):
-            for j in range(2):
-                x.append(np.random.rand(n_problem[i], spt_qry[j], n_var))
 
     if delta is not None:
-        assert len(x) == 4
+        assert len(delta) == 2
     else:
         # generate delta
         delta = []
@@ -158,6 +170,22 @@ def create_dataset(problem_dim: Tuple[int, int], x=None, n_problem=None, spt_qry
             delta1 = np.random.randint(0, 100, n_problem[i])
             delta2 = np.random.randint(0, 10, n_problem[i])
             delta.append([delta1, delta2])
+    
+    if x is not None:
+        assert len(x) == 4
+    else:
+        # generate x
+        x = []
+        for i in range(2):
+            for j in range(2):
+                x_pf = []
+                for k in range(n_problem[i]):
+                    ps = pf_data(n_var, n_obj, delta[i][j][k], delta[i][j][k])
+                    x_pf.append(ps[np.random.choice(ps.shape[0], int(0.5 * spt_qry[j]))])
+                x_pf = np.array(x_pf)
+                x_ran = np.random.rand(n_problem[i], spt_qry[j] - int(0.5 * spt_qry[j]), n_var)
+                x.append(np.concatenate((x_pf, x_ran), axis=1))
+                # x.append(np.random.rand(n_problem[i], spt_qry[j], n_var))
 
     train_set = [*create_dataset_inner(x[0], problem_dim, delta[0]), *create_dataset_inner(x[1], problem_dim, delta[0])]
     test_set = [*create_dataset_inner(x[2], problem_dim, delta[1]), *create_dataset_inner(x[3], problem_dim, delta[1])]
@@ -178,14 +206,14 @@ def create_dataset(problem_dim: Tuple[int, int], x=None, n_problem=None, spt_qry
     return (tuple(train_set), tuple(test_set)), (minimum, maximum)
 
 
-def evaluate(x: np.ndarray, delta: Tuple[List[int], List[int]],
+def evaluate(x: np.ndarray, delta: Tuple[int, int],
              n_objectives: int, min_max: Tuple[float | None, float | None]) -> np.ndarray:
     """
     Parameters
     ----------
     x : np.ndarray
         The input data, shape (n_point, n_variables)
-    delta : Tuple[List[int], List[int]]
+    delta : Tuple[int, int]
         The delta1 and delta2
     n_objectives: int
         The number of objectives
@@ -205,11 +233,85 @@ def evaluate(x: np.ndarray, delta: Tuple[List[int], List[int]],
         y /= min_max[1]
     return y
 
+def get_pf(n_var: int, n_objectives: int, delta: Tuple[int, int], min_max: Tuple[float | None, float | None]) -> np.ndarray:
+    """
+    Parameters
+    ----------
+    n_var: int
+        The number of variables
+    n_objectives: int
+        The number of objectives
+    delta : Tuple[int, int]
+        The delta1 and delta2
+    min_max : Tuple[float | None, float | None]
+        The minimum and maximum of the targets, if None, the targets will not be normalized
+
+    Returns
+    -------
+    np.ndarray
+        The parato front, shape (n_point, n_objectives)
+    """
+    problem = DTLZ1b(n_var = n_var, n_obj = n_objectives, delta1=delta[0], delta2=delta[1])
+    ref_dirs = get_reference_directions("das-dennis", n_objectives, n_partitions=12)
+    pf = problem.pareto_front(ref_dirs)
+    if min_max[0] is not None:
+        pf -= min_max[0]
+        pf /= min_max[1]
+    return pf
+
+def get_moea_data(n_var: int, n_objectives: int, delta: Tuple[int, int], algorithm, n_gen: int, min_max: Tuple[float | None, float | None]) -> Tuple[
+    np.ndarray, np.ndarray, np.ndarray, np.ndarray
+]:
+    """
+    Parameters
+    ----------
+    n_var: int
+        The number of variables
+    n_objectives: int
+        The number of objectives
+    delta: Tuple[int, int]
+        The delta1 and delta2
+    algorithm: 
+        MOEA algorithm
+    n_gen: int
+        number of generation
+    min_max: Tuple[float | None, float | None]
+        The minimum and maximum of the targets, if None, the targets will not be normalized
+
+    Returns
+    -------
+    Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+        moea_pf: The parato front, shape (n_point, n_objectives)
+        n_evals: The number of function evaluations
+        igd: The IGD
+    """
+    problem = DTLZ1b(n_var = n_var, n_obj = n_objectives, delta1=delta[0], delta2=delta[1]) # change delta here
+    res = minimize(problem,
+                algorithm,
+                termination=('n_gen', n_gen),
+                save_history=True,
+                verbose=False)
+    moea_pf = res.F
+
+    hist = res.history
+    hist_F,n_evals = [],[]
+    for algo in hist:
+        n_evals.append(algo.evaluator.n_eval)
+        opt = algo.opt
+        feas = np.where(opt.get("feasible"))[0]
+        hist_F.append(opt.get("F")[feas])
+    metric = IGD(moea_pf, zero_to_one=True)
+    igd = [metric.do(_F) for _F in hist_F]
+
+    if min_max[0] is not None:
+        moea_pf -= min_max[0]
+        moea_pf /= min_max[1]
+    return moea_pf, n_evals, igd
 
 def test():
-    n_dim = (7, 3)
+    n_dim = (8, 3)
     train_set, test_set = create_dataset(n_dim, n_problem=(4, 2), spt_qry=(5, 20))  # (12, 5, 7)
-    print(train_set[0].shape, train_set[1].shape, train_set[2].shape, train_set[3].shape)
+    print(train_set[0].shape, train_set[1].shape, test_set[0].shape, test_set[1].shape)
 
 
 if __name__ == '__main__':
