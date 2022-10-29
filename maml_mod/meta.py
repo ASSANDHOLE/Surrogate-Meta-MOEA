@@ -243,7 +243,7 @@ class Meta(nn.Module):
         return ret_loss, None if query_size == 0 else logits_q, net, fast_weights
 
     def fine_tuning_continue(self, nets, fast_weights, x, y, x_spt, y_spt, x_qry, y_qry, return_single_lose=True):
-        assert x.shape[0] == len(nets)
+        assert y.shape[0] == len(nets)
         n_net = len(nets)
         ret = [[], [], [], []]
         for i in range(n_net):
@@ -256,7 +256,7 @@ class Meta(nn.Module):
             else:
                 x_q, y_q = None, None
             t_loss, t_logits, t_net, t_weights = self._fine_tuning_continue(
-                nets[i], fast_weights[i], x[i], y[i], x_s, y_s, x_q, y_q, return_single_lose
+                nets[i], fast_weights[i], x, y[i], x_s, y_s, x_q, y_q, return_single_lose
             )
             ret[0].append(t_loss)
             ret[1].append(t_logits)

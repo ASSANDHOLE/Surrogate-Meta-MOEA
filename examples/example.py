@@ -12,14 +12,14 @@ from utils import NamedDict
 def get_args():
     args = NamedDict()
     args.problem_dim = (8, 3)
-    args.train_test = (20, 1)
+    args.train_test = (15, 1)
     args.epoch = 50
     args.update_lr = 0.01
     args.meta_lr = 0.001
-    args.k_spt = 10
-    args.k_qry = 100
-    args.update_step = 5
-    args.update_step_test = 8
+    args.k_spt = 100
+    args.k_qry = 200
+    args.update_step = 30
+    args.update_step_test = 50
     args.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # args.device = torch.device('cpu')
     return args
@@ -37,6 +37,15 @@ def get_network_structure(args):
         ('linear', [2 * n_args, 4 * n_args]),
         ('relu', [True]),
         ('linear', [1, 2 * n_args]),
+        # ('linear', [100, n_args]),
+        # ('relu', [True]),
+        # ('linear', [200, 100]),
+        # ('relu', [True]),
+        # ('linear', [200, 200]),
+        # ('relu', [True]),
+        # ('linear', [100, 200]),
+        # ('relu', [True]),
+        # ('linear', [1, 100]),
     ]
     return config
 
