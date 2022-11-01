@@ -12,7 +12,7 @@ from pymoo.indicators.igd import IGD
 from pymoo.optimize import minimize
 
 from DTLZ_problem import evaluate, get_pf, get_moea_data
-from DTLZ_problem import DTLZbProblem
+from DTLZ_problem import DTLZbProblem, DTLZ1b
 from examples.example import get_args, get_network_structure, get_dataset
 from examples.example_sinewave import get_args_maml_regression, get_network_structure_maml_regression, \
     get_dataset_sinewave
@@ -67,6 +67,14 @@ def main_sinewave():
 
 def main_NSGA():
     args = get_args()
+    igd = []
+    fn_eval = 0
+    fn_eval_limit = 300
+    max_pts_num = 5
+    pop_size = 60
+    sample_size = 30
+    n_gen = 10
+
     network_structure = get_network_structure(args)
     # generate delta
     delta = []
@@ -74,7 +82,7 @@ def main_NSGA():
         delta.append([np.random.randint(0, 100, args.train_test[i]), np.random.randint(0, 10, args.train_test[i])])
     dataset, min_max = get_dataset(args, normalize_targets=True, delta=delta)
     sol = MamlWrapper(dataset, args, network_structure)
-    # train_loss = sol.train(explicit=False)
+    train_loss = sol.train(explicit=False)
     test_loss = sol.test(return_single_loss=False)
 
     n_var = args.problem_dim[0]
@@ -83,25 +91,29 @@ def main_NSGA():
 
     pf_true = get_pf(n_var, n_objectives, delta_finetune, min_max)
 
-    history_x, history_f = np.empty((0, n_var)), np.empty((0, n_objectives))
-    igd = []
-    x_size = []
-    fn_eval_limit = 300
-    max_pts_num = 5
-    pop_size = 60
-    sample_size = 30
-    n_gen = 10
+    init_x = dataset[1][0][0] # test spt set (100,8)
 
-    while sum(x_size) < fn_eval_limit:
+    res = minimize(DTLZ1b(n_var=n_var, n_obj=n_objectives, delta1=delta_finetune[0], delta2=delta_finetune[1]),
+               NSGA2(pop_size=pop_size, sampling=init_x),
+               termination=('n_gen', 0.1))
 
-        if history_x.shape[0] < sample_size:
-            random_x = np.random.rand(pop_size - history_x.shape[0], n_var)
-            sample_x = np.vstack((history_x, random_x))
-        else:
-            random_x = np.random.rand(pop_size - sample_size, n_var)
-            sample_x = np.vstack((history_x[np.random.choice(history_x.shape[0], sample_size)], random_x))
+    history_x, history_f = res.X, res.F
+    history_f -= min_max[0]
+    history_f /= min_max[1]
 
-        algorithm = NSGA2(pop_size=pop_size, sampling=sample_x)
+    metric = IGD(pf_true, zero_to_one=True)
+    igd.append(metric.do(history_f))
+
+    while fn_eval < fn_eval_limit:
+
+        # if history_x.shape[0] < sample_size:
+        #     random_x = np.random.rand(pop_size - history_x.shape[0], n_var)
+        #     sample_x = np.vstack((history_x, random_x))
+        # else:
+        #     random_x = np.random.rand(pop_size - sample_size, n_var)
+        #     sample_x = np.vstack((history_x[np.random.choice(history_x.shape[0], sample_size)], random_x))
+
+        algorithm = NSGA2(pop_size=pop_size, sampling=history_x)
 
         res = minimize(DTLZbProblem(sol=sol),
                        algorithm,
@@ -116,7 +128,7 @@ def main_NSGA():
         history_x = np.vstack((history_x, X))
         # history_f = np.vstack((history_f, res.F))
 
-        x_size.append(X.shape[0])
+        fn_eval += X.shape[0]
 
         X = X.astype(np.float32)
         y_true = evaluate(X, delta_finetune, n_objectives, min_max=min_max)
@@ -135,16 +147,16 @@ def main_NSGA():
         igd.append(metric.do(history_f))
     
     pf = evaluate(res.X, delta_finetune, n_objectives, min_max=min_max)
-    moea_pf, n_evals_moea, igd_moea = get_moea_data(n_var, n_objectives, delta_finetune, algorithm, int(fn_eval_limit/pop_size), min_max)
-    n_evals_moea = n_evals_moea[:-1]
-    igd_moea = igd_moea[:-1]
+    moea_pf, n_evals_moea, igd_moea = get_moea_data(n_var, n_objectives, delta_finetune, NSGA2(pop_size=pop_size, sampling=init_x), int(fn_eval_limit/pop_size), pf_true, min_max)
+    n_evals_moea = np.insert(n_evals_moea, 0, 0)
+    igd_moea = np.insert(igd_moea, 0, igd[0])
 
     visualize_pf(pf=pf, label='Sorrogate PF', color='green', scale=[0.5]*3, pf_true=pf_true)
     visualize_pf(pf=moea_pf, label='NSGA-II PF', color='blue', scale=[0.5]*3, pf_true=pf_true)
 
     func_evals = [max_pts_num*np.arange(len(igd)), n_evals_moea]
     igds = [igd, igd_moea]
-    colors = ['black', 'red']
+    colors = ['black', 'blue']
     labels = ["Our Surrogate Model", "NSGA-II"]
     visualize_igd(func_evals, igds, colors, labels)
     plt.show()
