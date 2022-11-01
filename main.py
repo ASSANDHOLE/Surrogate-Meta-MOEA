@@ -151,19 +151,24 @@ def main_NSGA():
     n_evals_moea = np.insert(n_evals_moea, 0, 0)
     igd_moea = np.insert(igd_moea, 0, igd[0])
 
-    visualize_pf(pf=pf, label='Sorrogate PF', color='green', scale=[0.5]*3, pf_true=pf_true)
-    visualize_pf(pf=moea_pf, label='NSGA-II PF', color='blue', scale=[0.5]*3, pf_true=pf_true)
+    visualize_pf(pf=pf, label='Sorrogate PF', color='green', scale=[0.5]*3, pf_true=pf_true,
+                 show=SHOW_PLOT, save_path=f'{PREFIX}sor_pf.png', save_alternative=True)
+    visualize_pf(pf=moea_pf, label='NSGA-II PF', color='blue', scale=[0.5]*3, pf_true=pf_true,
+                 show=SHOW_PLOT, save_path=f'{PREFIX}moea_pf.png', save_alternative=True)
 
     func_evals = [max_pts_num*np.arange(len(igd)), n_evals_moea]
     igds = [igd, igd_moea]
     colors = ['black', 'blue']
     labels = ["Our Surrogate Model", "NSGA-II"]
-    visualize_igd(func_evals, igds, colors, labels)
+    visualize_igd(func_evals, igds, colors, labels,
+                  show=SHOW_PLOT, save_path=f'{PREFIX}igd.png', save_alternative=True)
     plt.show()
 
 
 if __name__ == '__main__':
     # main()
     # main_sinewave()
+    PREFIX = 'imgs/'
+    SHOW_PLOT = False
     main_NSGA()
 
