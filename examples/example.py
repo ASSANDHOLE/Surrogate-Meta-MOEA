@@ -11,15 +11,15 @@ from utils import NamedDict
 
 def get_args():
     args = NamedDict()
-    args.problem_dim = (8, 3)
+    args.problem_dim = (10, 3)
     args.train_test = (15, 1)
     args.epoch = 50
     args.update_lr = 0.01
     args.meta_lr = 0.001
-    args.k_spt = 100
+    args.k_spt = 30
     args.k_qry = 200
-    args.update_step = 30
-    args.update_step_test = 50
+    args.update_step = 5
+    args.update_step_test = 30
     args.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # args.device = torch.device('cpu')
     return args
