@@ -1,26 +1,19 @@
 # Unified MAML for this project
 from __future__ import annotations
 
-from typing import Tuple, List
-
 import numpy as np
-import torch
 from matplotlib import pyplot as plt
 from pymoo.algorithms.moo.nsga2 import NSGA2
-from pymoo.core.problem import Problem
 from pymoo.indicators.igd import IGD
+from pymoo.operators.sampling.lhs import sampling_lhs
 from pymoo.optimize import minimize
 
+from DTLZ_problem import DTLZbProblem, get_problem
 from DTLZ_problem import evaluate, get_pf, get_moea_data
-from DTLZ_problem import DTLZbProblem, DTLZ1b, DTLZ4c, get_problem
-from examples.example import get_args, get_network_structure, get_dataset, estimate_resource_usage
-from examples.example_sinewave import get_args_maml_regression, get_network_structure_maml_regression, \
-    get_dataset_sinewave
-from maml_mod import MamlWrapper
-from utils import NamedDict
-from visualization import visualize_loss, visualize_pf, visualize_igd
-from pymoo.operators.sampling.lhs import sampling_lhs
 from benchmarking import benchmark_for_seeds
+from problem_config.example import get_args, get_network_structure, get_dataset, estimate_resource_usage
+from maml_mod import MamlWrapper
+from visualization import visualize_loss, visualize_pf, visualize_igd
 
 
 def cprint(*args, do_print=True, **kwargs):
@@ -53,23 +46,6 @@ def main():
     print(f'Random loss: {mean_random_loss[-1]:.4f}')
 
     visualize_loss(test_loss, random_loss)
-
-
-def main_sinewave():
-    args = get_args_maml_regression()
-    network_structure = get_network_structure_maml_regression()
-    dataset = get_dataset_sinewave(args, normalize_targets=True)
-    sol = MamlWrapper(dataset, args, network_structure)
-    train_loss = sol.train(explicit=5)
-    test_loss = sol.test(return_single_loss=False)
-    mean_test_loss = np.mean(test_loss, axis=0)
-    print(f'Test loss: {mean_test_loss[-1]:.4f}')
-
-    args.update_step_test = int(1.5 * args.update_step_test)
-    sol = MamlWrapper(dataset, args, network_structure)
-    random_loss = sol.test(return_single_loss=False, pretrain=True)
-    print(f'Random loss: {random_loss[-1]:.4f}')
-    visualize_loss(mean_test_loss, random_loss)
 
 
 def main_NSGA_1b():

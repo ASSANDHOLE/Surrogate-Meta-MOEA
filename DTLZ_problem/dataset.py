@@ -223,7 +223,8 @@ def get_pf(n_var: int, n_objectives: int, delta: Tuple[int, int], problem_name: 
     np.ndarray
         The parato front, shape (n_point, n_objectives)
     """
-    problem = get_problem(name=problem_name, n_var=n_var, n_obj=n_objectives, delta1=delta[0], delta2=delta[1])  # change delta here
+    # change delta here
+    problem = get_problem(name=problem_name, n_var=n_var, n_obj=n_objectives, delta1=delta[0], delta2=delta[1])
     ref_dirs = get_reference_directions("das-dennis", n_objectives, n_partitions=12)
     N = ref_dirs.shape[0]
     # create the algorithm object
