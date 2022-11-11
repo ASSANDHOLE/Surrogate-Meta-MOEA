@@ -23,6 +23,7 @@ class Meta(nn.Module):
 
         self.update_lr = args.update_lr
         self.meta_lr = args.meta_lr
+        self.fine_tune_lr = args.fine_tune_lr
         self.n_way = args.n_way
         self.k_spt = args.k_spt
         self.k_qry = args.k_qry
@@ -177,9 +178,9 @@ class Meta(nn.Module):
             fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, fast_weights)))
 
             if query_size != 0:
-                logits_q = net(x_qry, fast_weights, bn_training=True)
-                # loss_q will be overwritten and just keep the loss_q on last update step.
-                losses.append(loss_func(logits_q, y_qry).item())
+                with torch.no_grad():
+                    logits_q = net(x_qry, fast_weights, bn_training=False)
+                    losses.append(loss_func(logits_q, y_qry).item())
 
         ret_loss = losses[-1] if return_single_lose else losses
 
@@ -229,11 +230,11 @@ class Meta(nn.Module):
             y_spt = y_spt.reshape(logits.shape)
             loss = loss_func(logits, y_spt)
             grad = torch.autograd.grad(loss, fast_weights)
-            fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, fast_weights)))
+            fast_weights = list(map(lambda p: p[1] - self.fine_tune_lr * p[0], zip(grad, fast_weights)))
             if query_size != 0:
-                logits_q = net(x_qry, fast_weights, bn_training=True)
-                # loss_q will be overwritten and just keep the loss_q on last update step.
-                losses.append(loss_func(logits_q, y_qry).item())
+                with torch.no_grad():
+                    logits_q = net(x_qry, fast_weights, bn_training=False)
+                    losses.append(loss_func(logits_q, y_qry).item())
 
         if query_size != 0:
             ret_loss = losses[-1] if return_single_lose else losses
@@ -248,11 +249,11 @@ class Meta(nn.Module):
         ret = [[], [], [], []]
         for i in range(n_net):
             if x_spt is not None:
-                x_s, y_s = x_spt[i].reshape(1, *x.size()[1:]), y_spt[i].reshape(1, *y.size()[1:])
+                x_s, y_s = x_spt[i], y_spt[i].reshape(-1, *y.size()[2:])
             else:
                 x_s, y_s = None, None
             if x_qry is not None:
-                x_q, y_q = x_qry[i].reshape(1, *x_qry.size()[1:]), y_qry[i].reshape(1, *y_qry.size()[1:])
+                x_q, y_q = x_qry[i], y_qry[i].reshape(-1, *y.size()[2:])
             else:
                 x_q, y_q = None, None
             t_loss, t_logits, t_net, t_weights = self._fine_tuning_continue(

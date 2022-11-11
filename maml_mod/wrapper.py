@@ -55,7 +55,7 @@ class MamlWrapper:
         """
         assert len(self.train_set) == 4
         assert len(self.test_set) == 4
-        required_attr = ['epoch', 'update_lr', 'meta_lr', 'k_spt',
+        required_attr = ['epoch', 'update_lr', 'meta_lr', 'fine_tune_lr', 'k_spt',
                          'k_qry', 'update_step', 'update_step_test']
         assert all([hasattr(self.args, attr) for attr in required_attr])
         if 'n_way' not in self.args:
@@ -128,7 +128,8 @@ class MamlWrapper:
                                                   return_single_lose=return_single_loss)
         return loss
 
-    def test_continue(self, x: np.ndarray, y: np.ndarray, return_single_loss: bool = True) -> None:
+    def test_continue(self, x: np.ndarray, y: np.ndarray, return_single_loss: bool = True,
+                      use_test_set: bool = True) -> List[List[float] | float]:
         """
         Test the model based on previous fine-tuned model
 
@@ -147,10 +148,18 @@ class MamlWrapper:
         x, y = torch.from_numpy(x), torch.from_numpy(y)
         x, y = x.to(self.device), y.to(self.device)
 
-        _, _, _nets, _fast_weights = self.maml.fine_tuning_continue(self.nets, self.fast_weights, x, y, *((None,) * 4),
-                                                                    return_single_lose=return_single_loss)
+        if use_test_set:
+            spt_x, spt_y, qry_x, qry_y = self.test_set
+        else:
+            spt_x, spt_y = (None,), (None,)
+            qry_x, qry_y = self.test_set[2:]
+
+        loss, _, _nets, _fast_weights = self.maml.fine_tuning_continue(self.nets, self.fast_weights, x, y,
+                                                                       spt_x, spt_y, qry_x, qry_y,
+                                                                       return_single_lose=return_single_loss)
         self.nets = _nets
         self.fast_weights = _fast_weights
+        return loss
 
     def __call__(self, x: np.ndarray) -> List[float]:
         if self.nets is None or self.fast_weights is None:

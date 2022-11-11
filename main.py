@@ -25,16 +25,21 @@ def main():
     # see Sol.__init__ for more information
     args = get_args()
     network_structure = get_network_structure(args)
-    dataset, _ = get_dataset(args, normalize_targets=True)
+    dataset, _ = get_dataset(args, normalize_targets=True, problem_name='DTLZ4c')
     sol = MamlWrapper(dataset, args, network_structure)
-    train_loss = sol.train(explicit=False)
+    # train_loss = sol.train(explicit=1)
     test_loss = sol.test(return_single_loss=False)
     mean_test_loss = np.mean(test_loss, axis=0)
     print(f'Test loss: {mean_test_loss[-1]:.4f}')
-    x_test = np.array([i * 0.1 for i in range(1, 1 + 8)], np.float32)
+    x_test = dataset[1][2][1]
+    y_true = dataset[1][3][1]
+    y_pred = [sol(x)[1] for x in x_test]
+    print(y_true[:10])
+    print(y_pred[:10])
+    x_test = np.array([i * 0.09 for i in range(1, 1 + 10)], np.float32)
     y_pred = sol(x_test)
     y_true = [y + 1 for y in y_pred]  # add some noise for testing
-    sol.test_continue(np.array([x_test] * 3), np.array(y_true, np.float32).reshape((3, 1)))
+    sol.test_continue(x_test, np.array(y_true, np.float32).reshape((3, 1)))
     y_pred_1 = sol(x_test)
     print(f'Prediction: {y_pred}')
     print(f'Prediction after continue: {y_pred_1}')
@@ -171,9 +176,10 @@ def main_NSGA_4c(print_progress=False, do_plot=False, do_train=True):
     igd = []
     fn_eval = args.k_spt
     fn_eval_limit = 200 - 2
-    max_pts_num = 5
-    pop_size = 30
-    n_gen = 10
+    max_pts_num = 10
+    moea_pop_size = 30
+    proxy_n_gen = 50
+    proxy_pop_size = 50
     problem_name = "DTLZ4c"
 
     network_structure = get_network_structure(args)
@@ -189,7 +195,8 @@ def main_NSGA_4c(print_progress=False, do_plot=False, do_train=True):
     sol = MamlWrapper(dataset, args, network_structure)
     cprint('dataset init complete', do_print=print_progress)
     if do_train:
-        train_loss = sol.train(explicit=False)
+        train_loss = sol.train(explicit=print_progress)
+        print(train_loss[-1])
     test_loss = sol.test(return_single_loss=False)
     cprint('MAML init complete', do_print=print_progress)
 
@@ -202,7 +209,7 @@ def main_NSGA_4c(print_progress=False, do_plot=False, do_train=True):
     problem = get_problem(name=problem_name, n_var=n_var, n_obj=n_objectives, delta1=delta_finetune[0],
                           delta2=delta_finetune[1])
     res = minimize(problem=problem,
-                   algorithm=NSGA2(pop_size=pop_size, sampling=init_x),
+                   algorithm=NSGA2(pop_size=proxy_pop_size, sampling=init_x),
                    termination=('n_gen', 0.1))
 
     history_x, history_f = res.X, res.F
@@ -230,8 +237,7 @@ def main_NSGA_4c(print_progress=False, do_plot=False, do_train=True):
 
         res = minimize(DTLZbProblem(n_var=n_var, n_obj=n_objectives, sol=sol),
                        algorithm,
-                       ("n_gen", n_gen),
-                       seed=1,
+                       ("n_gen", proxy_n_gen),
                        verbose=False)
 
         X = res.X
@@ -259,7 +265,8 @@ def main_NSGA_4c(print_progress=False, do_plot=False, do_train=True):
         reshaped_history_f = np.array(reshaped_history_f, dtype=np.float32)
         reshaped_history_f = reshaped_history_f.reshape((*reshaped_history_f.shape, 1))
 
-        sol.test_continue(history_x, reshaped_history_f)
+        cont_loss = sol.test_continue(X, y_true.T, return_single_loss=True)
+        cprint(f'continue loss: {cont_loss}', do_print=print_progress)
 
         # metric = IGD(pf_true, zero_to_one=True)
         igd.append(metric.do(history_f))
@@ -269,8 +276,8 @@ def main_NSGA_4c(print_progress=False, do_plot=False, do_train=True):
     cprint('Algorithm complete', do_print=print_progress)
     pf = history_f
     moea_pf, n_evals_moea, igd_moea = get_moea_data(n_var, n_objectives, delta_finetune,
-                                                    NSGA2(pop_size=pop_size, sampling=init_x),
-                                                    int(fn_eval_limit / pop_size), metric, problem_name, min_max)
+                                                    NSGA2(pop_size=moea_pop_size, sampling=init_x),
+                                                    int(fn_eval_limit / moea_pop_size), metric, problem_name, min_max)
     n_evals_moea = np.insert(n_evals_moea, 0, 0)
     igd_moea = np.insert(igd_moea, 0, igd[0])
     cprint('MOEA Baseline complete', do_print=print_progress)
@@ -288,6 +295,8 @@ def main_NSGA_4c(print_progress=False, do_plot=False, do_train=True):
         plt.show()
 
     cprint("IGD: ", igd[-3:-1], do_print=print_progress)
+    # deallocate memory
+    del sol
     return igd[-1]
 
 
@@ -326,20 +335,30 @@ def usage_check(n_proc: int):
     print('if the estimated usage is too large, you may cause system crash, try to reduce the number of processes')
 
 
-if __name__ == '__main__':
-    # main_NSGA_4c()
+def main_benchmark():
     _seeds = 20
-    _n_proc = 10
+    _n_proc = 1
+    init_seed = 42
     usage_check(_n_proc)
     _res = benchmark_for_seeds(main_NSGA_4c,
                                post_mean_std,
                                seeds=_seeds,
                                func_kwargs={'print_progress': False, 'do_train': True},
-                               n_proc=_n_proc)
+                               n_proc=_n_proc,
+                               init_seed=init_seed)
     print(f'MAML Trained IGD: {_res[0]} +- {_res[1]}')
     _res = benchmark_for_seeds(main_NSGA_4c,
                                post_mean_std,
                                seeds=_seeds,
                                func_kwargs={'print_progress': False, 'do_train': False},
-                               n_proc=_n_proc)
+                               n_proc=_n_proc,
+                               init_seed=init_seed)
     print(f'NON-Trained  IGD: {_res[0]} +- {_res[1]}')
+
+
+if __name__ == '__main__':
+    # main()
+    # main_NSGA_4c(do_plot=True, print_progress=True, do_train=False)
+    # main_NSGA_4c(do_plot=True, print_progress=True, do_train=True)
+    main_benchmark()
+

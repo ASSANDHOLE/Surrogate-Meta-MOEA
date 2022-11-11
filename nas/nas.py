@@ -132,11 +132,11 @@ def test():
     n_gen = args.n_gen
     problem = NasProblem(n_layer)
     n_var = CONFIG['n_var']
-    initial_pop = [[2*n_var, 4*n_var, 4*n_var, 2*n_var], [100, 200, 200, 100]]
+    initial_pop = [[2*n_var, *[4*n_var for _ in range(n_layer - 2)], 2*n_var], [100]*n_layer]
     len_remain = 2*pop_size - len(initial_pop)
     remain_pop = np.random.randint(
         low=CONFIG['lower_bound'], high=CONFIG['upper_bound'],
-        size=(len_remain, 4), dtype=int
+        size=(len_remain, n_layer), dtype=int
     )
     initial_pop = np.concatenate([initial_pop, remain_pop], axis=0)
     algorithm = NSGA2(

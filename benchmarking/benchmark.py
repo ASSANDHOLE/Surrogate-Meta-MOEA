@@ -40,8 +40,25 @@ def _multi_processing_wrapper(data: tuple) -> Any:
     if availabilities['tensorflow']:
         import tensorflow as tf
         tf.random.set_seed(seed)
-    print(seed)
-    return func(*args, **kwargs)
+    print(f'{seed=}')
+
+    try:
+        ret = func(*args, **kwargs)
+    except Exception as e:
+        print(f'Error in {seed=}: {e}')
+        ret = None
+
+    print(f'{seed=} finished')
+
+    # deallocate the memory
+    gc.collect()
+    if availabilities['torch']:
+        import torch
+        torch.cuda.empty_cache()
+    if availabilities['tensorflow']:
+        import tensorflow as tf
+        tf.keras.backend.clear_session()
+    return ret
 
 
 def benchmark_for_seeds(func: Callable,
@@ -96,7 +113,7 @@ def benchmark_for_seeds(func: Callable,
             set_start_method(new_proc_method)
         except RuntimeError as e:
             warnings.warn(f'Cannot set the start method to {new_proc_method}, {e}')
-    random.seed(42)
+    random.seed(init_seed)
     availabilities = {
         'numpy': False,
         # 'scipy': False,
@@ -137,14 +154,14 @@ def benchmark_for_seeds(func: Callable,
         n_proc = os.cpu_count()
         if n_proc is None:
             n_proc = 1
+    results = []
     if n_proc > 1:
-        with Pool(n_proc) as pool:
-            results = pool.map(
-                _multi_processing_wrapper,
-                [(func, func_args, func_kwargs, seed, availabilities) for seed in seeds]
-            )
+        with Pool(n_proc, maxtasksperchild=1) as pool:
+            results = pool.map(_multi_processing_wrapper, [
+                (func, func_args, func_kwargs, seed, availabilities)
+                for seed in seeds
+            ])
     else:
-        results = []
         for seed in seeds:
             results.append(_multi_processing_wrapper((func, func_args, func_kwargs, seed, availabilities)))
     ret = post_process(results, *post_process_args, **post_process_kwargs)
