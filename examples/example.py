@@ -56,3 +56,16 @@ def get_dataset(args, **kwargs):
     spt_qry = (args.k_spt, args.k_qry)
     dataset = create_dataset(problem_dim, n_problem=n_problem, spt_qry=spt_qry, **kwargs)
     return dataset
+
+
+def estimate_resource_usage():
+    usage = NamedDict()
+    usage.memory = '1.8G'
+    usage.gpu_memory = '1031M'
+    usage.description = \
+        "This is the estimate resource usage for this setup.\n" \
+        "Test platform:\n" \
+        "    CPU: Intel(R) Core(TM) i9-10900K CPU\n" \
+        "    GPU: NVIDIA GeForce RTX 3090\n" \
+        "    Memory: 32G\n"
+    return usage
