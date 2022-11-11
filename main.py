@@ -12,13 +12,20 @@ from pymoo.indicators.igd import IGD
 from pymoo.optimize import minimize
 
 from DTLZ_problem import evaluate, get_pf, get_moea_data
-from DTLZ_problem import DTLZbProblem
-from examples.example import get_args, get_network_structure, get_dataset
+from DTLZ_problem import DTLZbProblem, DTLZ1b, DTLZ4c, get_problem
+from examples.example import get_args, get_network_structure, get_dataset, estimate_resource_usage
 from examples.example_sinewave import get_args_maml_regression, get_network_structure_maml_regression, \
     get_dataset_sinewave
 from maml_mod import MamlWrapper
 from utils import NamedDict
 from visualization import visualize_loss, visualize_pf, visualize_igd
+from pymoo.operators.sampling.lhs import sampling_lhs
+from benchmarking import benchmark_for_seeds
+
+
+def cprint(*args, do_print=True, **kwargs):
+    if do_print:
+        print(*args, **kwargs)
 
 
 def main():
@@ -65,93 +72,298 @@ def main_sinewave():
     visualize_loss(mean_test_loss, random_loss)
 
 
-def main_NSGA():
+def main_NSGA_1b():
     args = get_args()
+    n_var = args.problem_dim[0]
+    n_objectives = args.problem_dim[1]
+    igd = []
+    fn_eval = args.k_spt
+    fn_eval_limit = 300 - 2
+    max_pts_num = 5
+    pop_size = 50
+    n_gen = 10
+    problem_name = "DTLZ1b"
+
     network_structure = get_network_structure(args)
     # generate delta
     delta = []
     for i in range(2):
         delta.append([np.random.randint(0, 100, args.train_test[i]), np.random.randint(0, 10, args.train_test[i])])
-    dataset, min_max = get_dataset(args, normalize_targets=True, delta=delta)
+    x = [None, None, None, None]
+    x[2] = sampling_lhs(n_samples=11 * n_var - 1, n_var=n_var, xl=0, xu=1)
+    # sample 'arg.k_spt' from x[2]
+    x[2] = x[2][np.random.choice(x[2].shape[0], args.k_spt, replace=False), :]
+    dataset, min_max = get_dataset(args, normalize_targets=True, delta=delta, problem_name=problem_name)
     sol = MamlWrapper(dataset, args, network_structure)
     # train_loss = sol.train(explicit=False)
     test_loss = sol.test(return_single_loss=False)
 
-    n_var = args.problem_dim[0]
-    n_objectives = args.problem_dim[1]
     delta_finetune = np.array(delta[1])[:, -1]
 
-    pf_true = get_pf(n_var, n_objectives, delta_finetune, min_max)
+    pf_true = get_pf(n_var, n_objectives, delta_finetune, problem_name, min_max)
 
-    history_x, history_f = np.empty((0, n_var)), np.empty((0, n_objectives))
-    igd = []
-    x_size = []
-    fn_eval_limit = 300
-    max_pts_num = 5
-    pop_size = 60
-    sample_size = 30
-    n_gen = 10
+    init_x = dataset[1][0][0]  # test spt set (100, 8)
 
-    while sum(x_size) < fn_eval_limit:
+    problem = get_problem(name=problem_name, n_var=n_var, n_obj=n_objectives, delta1=delta_finetune[0],
+                          delta2=delta_finetune[1])
+    res = minimize(problem=problem,
+                   algorithm=NSGA2(pop_size=pop_size, sampling=init_x),
+                   termination=('n_gen', 0.1))
 
-        if history_x.shape[0] < sample_size:
-            random_x = np.random.rand(pop_size - history_x.shape[0], n_var)
-            sample_x = np.vstack((history_x, random_x))
-        else:
-            random_x = np.random.rand(pop_size - sample_size, n_var)
-            sample_x = np.vstack((history_x[np.random.choice(history_x.shape[0], sample_size)], random_x))
+    history_x, history_f = res.X, res.F
+    history_x = history_x.astype(np.float32)
+    history_f = history_f.astype(np.float32)
+    history_f -= min_max[0]
+    history_f /= min_max[1]
 
-        algorithm = NSGA2(pop_size=pop_size, sampling=sample_x)
+    metric = IGD(pf_true, zero_to_one=True)
+    igd.append(metric.do(history_f))
+    igd.append(igd[-1])
 
-        res = minimize(DTLZbProblem(sol=sol),
+    # only for visualization
+    Y_igd = []
+    Y_igd.append(metric.do(history_f))
+    Y_igd.append(igd[-1])
+
+    func_eval_igd = [0, fn_eval]
+
+    while fn_eval < fn_eval_limit:
+
+        algorithm = NSGA2(pop_size=args.k_spt, sampling=history_x)
+
+        res = minimize(DTLZbProblem(n_var=n_var, n_obj=n_objectives, sol=sol),
                        algorithm,
                        ("n_gen", n_gen),
                        seed=1,
                        verbose=False)
-        
+
         X = res.X
+        # only for visualization
+        Y_true = evaluate(X, delta_finetune, n_objectives, min_max=min_max, problem_name=problem_name)
+        Y_igd.append(metric.do(Y_true))
+
         if len(X) > max_pts_num:
             X = X[np.random.choice(X.shape[0], max_pts_num)]
-        
+        X = X.astype(np.float32)
+
         history_x = np.vstack((history_x, X))
         # history_f = np.vstack((history_f, res.F))
 
-        x_size.append(X.shape[0])
+        fn_eval += X.shape[0]
 
-        X = X.astype(np.float32)
-        y_true = evaluate(X, delta_finetune, n_objectives, min_max=min_max)
+        y_true = evaluate(X, delta_finetune, n_objectives, min_max=min_max, problem_name=problem_name)
+        y_true = y_true.astype(np.float32)
 
         history_f = np.vstack((history_f, y_true))
 
-        new_y_true = []
+        reshaped_history_f = []
         for i in range(n_objectives):
-            new_y_true.append(y_true[:, i])
-        new_y_true = np.array(new_y_true, dtype=np.float32)
-        new_y_true = new_y_true.reshape((*new_y_true.shape, 1))
+            reshaped_history_f.append(history_f[:, i])
+        reshaped_history_f = np.array(reshaped_history_f, dtype=np.float32)
+        reshaped_history_f = reshaped_history_f.reshape((*reshaped_history_f.shape, 1))
 
-        sol.test_continue(X, new_y_true)
+        sol.test_continue(history_x, reshaped_history_f)
 
-        metric = IGD(pf_true, zero_to_one=True)
+        # metric = IGD(pf_true, zero_to_one=True)
         igd.append(metric.do(history_f))
-    
-    pf = evaluate(res.X, delta_finetune, n_objectives, min_max=min_max)
-    moea_pf, n_evals_moea, igd_moea = get_moea_data(n_var, n_objectives, delta_finetune, algorithm, int(fn_eval_limit/pop_size), min_max)
-    n_evals_moea = n_evals_moea[:-1]
-    igd_moea = igd_moea[:-1]
+        func_eval_igd.append(fn_eval)
 
-    visualize_pf(pf=pf, label='Sorrogate PF', color='green', scale=[0.5]*3, pf_true=pf_true)
-    visualize_pf(pf=moea_pf, label='NSGA-II PF', color='blue', scale=[0.5]*3, pf_true=pf_true)
+    # pf = evaluate(res.X, delta_finetune, n_objectives, min_max=min_max)
+    pf = history_f
+    moea_pf, n_evals_moea, igd_moea = get_moea_data(n_var, n_objectives, delta_finetune,
+                                                    NSGA2(pop_size=pop_size, sampling=init_x),
+                                                    int(fn_eval_limit / pop_size), metric, problem_name, min_max)
+    n_evals_moea = np.insert(n_evals_moea, 0, 0)
+    igd_moea = np.insert(igd_moea, 0, igd[0])
+    print(n_evals_moea)
 
-    func_evals = [max_pts_num*np.arange(len(igd)), n_evals_moea]
-    igds = [igd, igd_moea]
-    colors = ['black', 'red']
-    labels = ["Our Surrogate Model", "NSGA-II"]
+    visualize_pf(pf=pf, label='Sorrogate PF', color='green', scale=[0.5] * 3, pf_true=pf_true)
+    visualize_pf(pf=moea_pf, label='NSGA-II PF', color='blue', scale=[0.5] * 3, pf_true=pf_true)
+
+    func_evals = [func_eval_igd, n_evals_moea, func_eval_igd]
+    igds = [igd, igd_moea, Y_igd]
+    colors = ['black', 'blue', 'green']
+    labels = ["Our Surrogate Model", "NSGA-II", "Test"]
     visualize_igd(func_evals, igds, colors, labels)
     plt.show()
 
 
-if __name__ == '__main__':
-    # main()
-    # main_sinewave()
-    main_NSGA()
+def main_NSGA_4c(print_progress=False, do_plot=False, do_train=True):
+    args = get_args()
+    n_var = args.problem_dim[0]
+    n_objectives = args.problem_dim[1]
+    igd = []
+    fn_eval = args.k_spt
+    fn_eval_limit = 200 - 2
+    max_pts_num = 5
+    pop_size = 30
+    n_gen = 10
+    problem_name = "DTLZ4c"
 
+    network_structure = get_network_structure(args)
+    # generate delta
+    delta = []
+    for i in range(2):
+        delta.append([np.random.randint(0, 100, args.train_test[i]), np.random.randint(0, 10, args.train_test[i])])
+    x = [None, None, None, None]
+    x[2] = sampling_lhs(n_samples=11 * n_var - 1, n_var=n_var, xl=0, xu=1)
+    # sample 'arg.k_spt' from x[2]
+    x[2] = x[2][np.random.choice(x[2].shape[0], args.k_spt, replace=False), :]
+    dataset, min_max = get_dataset(args, normalize_targets=True, delta=delta, problem_name=problem_name)
+    sol = MamlWrapper(dataset, args, network_structure)
+    cprint('dataset init complete', do_print=print_progress)
+    if do_train:
+        train_loss = sol.train(explicit=False)
+    test_loss = sol.test(return_single_loss=False)
+    cprint('MAML init complete', do_print=print_progress)
+
+    delta_finetune = np.array(delta[1])[:, -1]
+
+    pf_true = get_pf(n_var, n_objectives, delta_finetune, problem_name, min_max)
+
+    init_x = dataset[1][0][0]  # test spt set (100, 8)
+
+    problem = get_problem(name=problem_name, n_var=n_var, n_obj=n_objectives, delta1=delta_finetune[0],
+                          delta2=delta_finetune[1])
+    res = minimize(problem=problem,
+                   algorithm=NSGA2(pop_size=pop_size, sampling=init_x),
+                   termination=('n_gen', 0.1))
+
+    history_x, history_f = res.X, res.F
+    history_x = history_x.astype(np.float32)
+    history_f = history_f.astype(np.float32)
+    history_f -= min_max[0]
+    history_f /= min_max[1]
+
+    metric = IGD(pf_true, zero_to_one=True)
+    igd.append(metric.do(history_f))
+    igd.append(igd[-1])
+
+    # only for visualization
+    Y_igd = []
+    Y_igd.append(metric.do(history_f))
+    Y_igd.append(igd[-1])
+
+    func_eval_igd = [0, fn_eval]
+
+    cprint('Algorithm init complete', do_print=print_progress)
+
+    while fn_eval < fn_eval_limit:
+        cprint(f'fn_eval: {fn_eval}', do_print=print_progress)
+        algorithm = NSGA2(pop_size=args.k_spt, sampling=history_x)
+
+        res = minimize(DTLZbProblem(n_var=n_var, n_obj=n_objectives, sol=sol),
+                       algorithm,
+                       ("n_gen", n_gen),
+                       seed=1,
+                       verbose=False)
+
+        X = res.X
+        # only for visualization
+        Y_true = evaluate(X, delta_finetune, n_objectives, problem_name, min_max=min_max)
+        Y_igd.append(metric.do(Y_true))
+
+        if len(X) > max_pts_num:
+            X = X[np.random.choice(X.shape[0], max_pts_num)]
+        X = X.astype(np.float32)
+
+        history_x = np.vstack((history_x, X))
+        # history_f = np.vstack((history_f, res.F))
+
+        fn_eval += X.shape[0]
+
+        y_true = evaluate(X, delta_finetune, n_objectives, problem_name, min_max=min_max)
+        y_true = y_true.astype(np.float32)
+
+        history_f = np.vstack((history_f, y_true))
+
+        reshaped_history_f = []
+        for i in range(n_objectives):
+            reshaped_history_f.append(history_f[:, i])
+        reshaped_history_f = np.array(reshaped_history_f, dtype=np.float32)
+        reshaped_history_f = reshaped_history_f.reshape((*reshaped_history_f.shape, 1))
+
+        sol.test_continue(history_x, reshaped_history_f)
+
+        # metric = IGD(pf_true, zero_to_one=True)
+        igd.append(metric.do(history_f))
+        func_eval_igd.append(fn_eval)
+
+    # pf = evaluate(res.X, delta_finetune, n_objectives, min_max=min_max)
+    cprint('Algorithm complete', do_print=print_progress)
+    pf = history_f
+    moea_pf, n_evals_moea, igd_moea = get_moea_data(n_var, n_objectives, delta_finetune,
+                                                    NSGA2(pop_size=pop_size, sampling=init_x),
+                                                    int(fn_eval_limit / pop_size), metric, problem_name, min_max)
+    n_evals_moea = np.insert(n_evals_moea, 0, 0)
+    igd_moea = np.insert(igd_moea, 0, igd[0])
+    cprint('MOEA Baseline complete', do_print=print_progress)
+
+    if do_plot:
+        visualize_pf(pf=pf, label='Sorrogate PF', color='green', scale=[0.7] * 3, pf_true=pf_true)
+        visualize_pf(pf=moea_pf, label='NSGA-II PF', color='blue', scale=[0.7] * 3, pf_true=pf_true)
+
+    func_evals = [func_eval_igd, n_evals_moea, func_eval_igd]
+    igds = [igd, igd_moea, Y_igd]
+    colors = ['black', 'blue', 'green']
+    labels = ["Our Surrogate Model", "NSGA-II", "Test"]
+    if do_plot:
+        visualize_igd(func_evals, igds, colors, labels)
+        plt.show()
+
+    cprint("IGD: ", igd[-3:-1], do_print=print_progress)
+    return igd[-1]
+
+
+def post_mean_std(data: list | np.ndarray):
+    return np.mean(data), np.std(data)
+
+
+def usage_check(n_proc: int):
+    def parse_value(_val):
+        # unit: GB
+        unit = _val[-1]
+        if unit == 'G':
+            return float(_val[:-1])
+        elif unit == 'M':
+            return float(_val[:-1]) / 1024
+        elif unit == 'K':
+            return float(_val[:-1]) / 1024 / 1024
+        else:
+            # assume it is in B
+            return float(_val) / 1024 / 1024 / 1024
+
+    if n_proc < 0:
+        import os
+        n_proc = os.cpu_count() + n_proc
+        if n_proc is None:
+            n_proc = 1
+    est = estimate_resource_usage()
+    mem_per_proc = parse_value(est.memory)
+    gpu_mem_per_proc = parse_value(est.gpu_memory)
+    desc = est.description
+    total_meme_usage = mem_per_proc * n_proc
+    total_gpu_meme_usage = gpu_mem_per_proc * n_proc
+    print(f'Estimated RAM usage: {total_meme_usage:.2f} GB')
+    print(f'Estimated GPU RAM usage: {total_gpu_meme_usage:.2f} GB')
+    print(desc)
+    print('if the estimated usage is too large, you may cause system crash, try to reduce the number of processes')
+
+
+if __name__ == '__main__':
+    # main_NSGA_4c()
+    _seeds = 20
+    _n_proc = 10
+    usage_check(_n_proc)
+    _res = benchmark_for_seeds(main_NSGA_4c,
+                               post_mean_std,
+                               seeds=_seeds,
+                               func_kwargs={'print_progress': False, 'do_train': True},
+                               n_proc=_n_proc)
+    print(f'MAML Trained IGD: {_res[0]} +- {_res[1]}')
+    _res = benchmark_for_seeds(main_NSGA_4c,
+                               post_mean_std,
+                               seeds=_seeds,
+                               func_kwargs={'print_progress': False, 'do_train': False},
+                               n_proc=_n_proc)
+    print(f'NON-Trained  IGD: {_res[0]} +- {_res[1]}')

@@ -73,7 +73,7 @@ def visualize_igd(func_evals, igds, colors, labels):
     for i in range(len(igds)):
         plt.plot(func_evals[i], igds[i], color=colors[i], lw=0.7, label=labels[i])
         plt.scatter(func_evals[i], igds[i], facecolor="none", edgecolor=colors[i], marker="p")
-    # plt.axhline(10**-2, color="red", label="10^-2", linestyle="--")
+    plt.axhline(10**-1, color="red", label="10^-1", linestyle="--")
     plt.title("Convergence")
     plt.xlabel("Function Evaluations")
     plt.ylabel("IGD")
