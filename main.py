@@ -8,7 +8,7 @@ from pymoo.indicators.igd import IGD
 from pymoo.operators.sampling.lhs import sampling_lhs
 from pymoo.optimize import minimize
 
-from DTLZ_problem import DTLZbProblem, get_problem
+from DTLZ_problem import DTLZbProblem, get_custom_problem
 from DTLZ_problem import evaluate, get_pf, get_moea_data
 from benchmarking import benchmark_for_seeds
 from problem_config.example import get_args, get_network_structure, get_dataset, estimate_resource_usage
@@ -83,8 +83,8 @@ def main_NSGA_1b():
 
     init_x = dataset[1][0][0]  # test spt set (100, 8)
 
-    problem = get_problem(name=problem_name, n_var=n_var, n_obj=n_objectives, delta1=delta_finetune[0],
-                          delta2=delta_finetune[1])
+    problem = get_custom_problem(name=problem_name, n_var=n_var, n_obj=n_objectives, delta1=delta_finetune[0],
+                                 delta2=delta_finetune[1])
 
     pf_true = get_pf(n_objectives, problem_name, min_max)
 
@@ -181,7 +181,7 @@ def main_NSGA_4c(print_progress=False, do_plot=False, do_train=True):
     moea_pop_size = 30
     proxy_n_gen = 50
     proxy_pop_size = 50
-    problem_name = "DTLZ4c"
+    problem_name = 'DTLZ4c'
 
     network_structure = get_network_structure(args)
     # generate delta
@@ -205,9 +205,9 @@ def main_NSGA_4c(print_progress=False, do_plot=False, do_train=True):
 
     init_x = dataset[1][0][0]  # test spt set (100, 8)
 
-    problem = get_problem(name=problem_name, n_var=n_var, n_obj=n_objectives, delta1=delta_finetune[0],
-                          delta2=delta_finetune[1])
-    
+    problem = get_custom_problem(name=problem_name, n_var=n_var, n_obj=n_objectives, delta1=delta_finetune[0],
+                                 delta2=delta_finetune[1])
+
     pf_true = get_pf(n_objectives, problem, min_max)
 
     res = minimize(problem=problem,
@@ -233,6 +233,9 @@ def main_NSGA_4c(print_progress=False, do_plot=False, do_train=True):
 
     cprint('Algorithm init complete', do_print=print_progress)
 
+    plot_int = 30
+    plotted = 1000
+
     while fn_eval < fn_eval_limit:
         cprint(f'fn_eval: {fn_eval}', do_print=print_progress)
         algorithm_surrogate = NSGA2(pop_size=args.k_spt, sampling=history_x)
@@ -240,7 +243,7 @@ def main_NSGA_4c(print_progress=False, do_plot=False, do_train=True):
 
         res = minimize(problem_surrogate,
                        algorithm_surrogate,
-                       ("n_gen", proxy_n_gen),
+                       ('n_gen', proxy_n_gen),
                        verbose=False)
 
         X = res.X
@@ -268,15 +271,23 @@ def main_NSGA_4c(print_progress=False, do_plot=False, do_train=True):
         reshaped_history_f = np.array(reshaped_history_f, dtype=np.float32)
         reshaped_history_f = reshaped_history_f.reshape((*reshaped_history_f.shape, 1))
 
-        cont_loss = sol.test_continue(X, y_true.T, return_single_loss=True)
+        cont_loss = sol.test_continue(history_x, reshaped_history_f, return_single_loss=True)
         cprint(f'continue loss: {cont_loss}', do_print=print_progress)
 
         # metric = IGD(pf_true, zero_to_one=True)
         igd.append(metric.do(history_f))
         func_eval_igd.append(fn_eval)
 
-        pf_true_surrogate = get_pf(n_objectives, problem_surrogate, min_max)
-        visualize_pf(pf=pf_true_surrogate, label='Sorrogate PF', color='green', scale=[0.7] * 3)
+        pf_true_surrogate = get_pf(n_objectives, problem_surrogate)
+        scale = []
+        for i in range(n_objectives):
+            concatenated = np.concatenate([pf_true_surrogate[:, i], pf_true[:, i]]),
+            data = [np.min(concatenated), np.max(concatenated)]
+            scale.append(data)
+        if fn_eval > plotted + plot_int:
+            plotted = fn_eval
+            visualize_pf(pf=pf_true_surrogate, label='Surrogate PF', color='green',
+                         scale=scale, pf_true=pf_true, show=True)
 
     # pf = evaluate(res.X, delta_finetune, n_objectives, min_max=min_max)
     cprint('Algorithm complete', do_print=print_progress)
@@ -289,18 +300,19 @@ def main_NSGA_4c(print_progress=False, do_plot=False, do_train=True):
     cprint('MOEA Baseline complete', do_print=print_progress)
 
     if do_plot:
-        visualize_pf(pf=pf, label='Sorrogate PF', color='green', scale=[0.7] * 3, pf_true=pf_true)
+        visualize_pf(pf=pf, label='Surrogate PF', color='green', scale=[0.7] * 3, pf_true=pf_true)
         visualize_pf(pf=moea_pf, label='NSGA-II PF', color='blue', scale=[0.7] * 3, pf_true=pf_true)
 
     func_evals = [func_eval_igd, n_evals_moea, func_eval_igd]
     igds = [igd, igd_moea, Y_igd]
     colors = ['black', 'blue', 'green']
-    labels = ["Our Surrogate Model", "NSGA-II", "Test"]
+    labels = ['Our Surrogate Model', 'NSGA-II', 'Test']
     if do_plot:
         visualize_igd(func_evals, igds, colors, labels)
         plt.show()
 
-    cprint("IGD: ", igd[-3:-1], do_print=print_progress)
+    cprint(f'IGD of Proxy: {igd[-3:-1]}', do_print=print_progress)
+    cprint(f'IGD of MOEA:  {igd_moea[-3:-1]}', do_print=print_progress)
     # deallocate memory
     del sol
     return igd[-1]
@@ -367,4 +379,3 @@ if __name__ == '__main__':
     # main_NSGA_4c(do_plot=True, print_progress=True, do_train=False)
     main_NSGA_4c(do_plot=True, print_progress=True, do_train=True)
     # main_benchmark()
-

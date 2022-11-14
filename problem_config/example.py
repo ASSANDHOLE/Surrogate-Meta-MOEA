@@ -12,11 +12,11 @@ from utils import NamedDict
 def get_args():
     args = NamedDict()
     args.problem_dim = (10, 3)
-    args.train_test = (15, 1)
+    args.train_test = (30, 1)
     args.epoch = 100
-    args.update_lr = 0.001
-    args.meta_lr = 0.001
-    args.fine_tune_lr = 0.005
+    args.update_lr = 0.02
+    args.meta_lr = 0.01
+    args.fine_tune_lr = 0.05
     args.k_spt = 30
     args.k_qry = 200
     args.update_step = 20
@@ -29,17 +29,13 @@ def get_args():
 def get_network_structure(args):
     n_args = args.problem_dim[0]
     config = [
-        ('linear', [150, n_args]),
+        ('linear', [15, n_args]),
         ('relu', [True]),
-        ('linear', [300, 150]),
+        ('linear', [15, 15]),
         ('relu', [True]),
-        ('linear', [300, 300]),
+        ('linear', [15, 15]),
         ('relu', [True]),
-        ('linear', [300, 300]),
-        ('relu', [True]),
-        ('linear', [150, 300]),
-        ('relu', [True]),
-        ('linear', [1, 150]),
+        ('linear', [1, 15]),
         # ('linear', [100, n_args]),
         # ('relu', [True]),
         # ('linear', [200, 100]),
@@ -64,7 +60,7 @@ def get_dataset(args, **kwargs):
 def estimate_resource_usage():
     usage = NamedDict()
     usage.memory = '2.3G'
-    usage.gpu_memory = '2819M'
+    usage.gpu_memory = '1077M'
     usage.description = \
         "This is the estimate resource usage for this setup.\n" \
         "Test platform:\n" \

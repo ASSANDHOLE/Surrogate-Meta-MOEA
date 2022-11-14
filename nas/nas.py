@@ -1,143 +1,275 @@
-from typing import List, Any
-from copy import deepcopy
+import os
 import pickle
-import argparse
+import sys
+import time
+from multiprocessing import Pool, Lock
+from multiprocessing import Manager as LockManager
+from typing import List
+
+sys.path.append('..')
+
+import random
+import torch
+
+from gpu_selector import GpuManager, GpuSelector
 
 import numpy as np
-import torch
-import torch.nn as nn
-
+from pymoo.indicators.igd import IGD
+from DTLZ_problem import DTLZbProblem, get_custom_problem
+from DTLZ_problem import evaluate, get_pf
+from benchmarking import benchmark_for_seeds_different_args
+from problem_config.example import get_args, get_dataset
+from maml_mod import MamlWrapper
 from pymoo.core.problem import Problem
-from pymoo.problems import get_problem
 from pymoo.operators.sampling.lhs import sampling_lhs
 from pymoo.algorithms.moo.nsga2 import NSGA2
 from pymoo.operators.crossover.sbx import SBX
 from pymoo.operators.mutation.pm import PM
 from pymoo.operators.repair.rounding import RoundingRepair
-from pymoo.operators.sampling.rnd import IntegerRandomSampling
 from pymoo.optimize import minimize
 
-
 CONFIG = {
-    'n_var': 10,
-    'n_obj': 3,
-    'n_sample': 1000,
-    'n_epoch': 100,
-    'lr': 0.001,
-    'lower_bound': 15,
-    'upper_bound': 1000,
-    'dataset': 'dtlz4',
-    'device': torch.device('cuda:0' if torch.cuda.is_available() else 'cpu'),
+    'layer': 3,
+    'seeds': None,
+    'n_gpu': 1,
+    'n_parallel': int(1),
+    'gpu_sel_param': 0
 }
 
-DATASET = {}
+
+if os.path.exists('./config.json'):
+    import json
+    with open('./config.json', 'r') as _f:
+        CONFIG.update(json.load(_f))
 
 
-class TargetModel(nn.Module):
-    def __init__(self, n_layer: int, n_arg: int, layer_params: List[int] | np.ndarray):
-        super(TargetModel, self).__init__()
-        self.n_layer = n_layer
-        self.layer_params = layer_params
-        self.layers = nn.ModuleList()
-        self.layers.append(nn.Linear(n_arg, layer_params[0]))
-        for i in range(1, n_layer):
-            self.layers.append(nn.Linear(layer_params[i - 1], layer_params[i]))
-        self.layers.append(nn.Linear(layer_params[-1], 1))
-
-    def forward(self, x):
-        for i in range(self.n_layer):
-            x = self.layers[i](x)
-            x = nn.ReLU()(x)
-        x = self.layers[-1](x)
-        return x.flatten()
+CACHE = {}
 
 
-def get_dataset(dataset: str, n_var: int, n_obj: int, n_x: int) -> list:
-    # dataset should be pymoo problem
-    def tuple_to_tensor(_t: tuple) -> tuple:
-        return tuple(torch.tensor(_t[i], dtype=torch.float32, device=CONFIG['device']) for i in range(len(_t)))
-    problem = get_problem(dataset, n_var=n_var, n_obj=n_obj)
-    x = sampling_lhs(n_samples=n_x, n_var=n_var, xl=0, xu=1)
-    f = problem.evaluate(x)
-    ret = [(x, f[:, i]) for i in range(n_obj)]
-    ret = [tuple_to_tensor(r) for r in ret]
+def net_structure(args, structure_list: List[int]):
+    n_args_in = args.problem_dim[0]
+    conf = [('linear', [structure_list[0], n_args_in]), ('relu', [True])]
+    for i in range(1, len(structure_list)):
+        conf.append(('linear', [structure_list[i], structure_list[i - 1]]))
+        conf.append(('relu', [True]))
+    conf.append(('linear', [1, structure_list[-1]]))
+    return conf
+
+
+def has_local_storage(name: str):
+    return os.path.exists(name)
+
+
+def load_local_storage(name: str):
+    try:
+        with open(name, 'rb') as f:
+            return pickle.load(f)
+    except pickle.PickleError as e:
+        if os.path.exists(name):
+            try:
+                os.remove(name)
+            except OSError:
+                pass
+        return None
+
+
+def save_to_local_storage(name: str, data):
+    with open(name, 'wb') as f:
+        pickle.dump(data, f)
+
+
+def cache_dataset(seed: int):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if seed in CACHE:
+        return CACHE[seed]
+    name = f'datastore/dataset_{seed}.pkl'
+    if has_local_storage(name):
+        val = load_local_storage(name)
+        if val is not None:
+            dataset, min_max, delta, x = val
+            CACHE[seed] = dataset, min_max, delta, x
+            return dataset, min_max, delta, x
+    args = get_args()
+    n_var = args.problem_dim[0]
+    delta = []
+    for i in range(2):
+        delta.append([np.random.randint(0, 100, args.train_test[i]), np.random.randint(0, 10, args.train_test[i])])
+    x = [None, None, None, None]
+    x[2] = sampling_lhs(n_samples=11 * n_var - 1, n_var=n_var, xl=0, xu=1)
+    x[2] = x[2][np.random.choice(x[2].shape[0], args.k_spt, replace=False), :]
+    x[2] = x[2].reshape((1, *x[2].shape))
+    dataset, min_max = get_dataset(args, normalize_targets=True, x=x, delta=delta, problem_name='DTLZ4c')
+    CACHE[seed] = dataset, min_max, delta, x
+    save_to_local_storage(name, (dataset, min_max, delta, x))
+    return dataset, min_max, delta, x
+
+
+def worker(gpu_id: int, seed: int, net_structure_list: List[int]):
+    args = get_args()
+    args.device = torch.device(f'cuda:{gpu_id}' if torch.cuda.is_available() else 'cpu')
+    n_var = args.problem_dim[0]
+    n_objectives = args.problem_dim[1]
+    igd = []
+    fn_eval = args.k_spt
+    fn_eval_limit = 200 - 2
+    max_pts_num = 10
+    proxy_n_gen = 50
+    proxy_pop_size = 50
+    problem_name = 'DTLZ4c'
+
+    network_structure = net_structure(args, net_structure_list)
+    # generate delta
+    dataset, min_max, delta, x_init = cache_dataset(seed)
+    sol = MamlWrapper(dataset, args, network_structure)
+    sol.train(explicit=False)
+    sol.test(return_single_loss=False)
+
+    delta_finetune = np.array(delta[1])[:, -1]
+
+    init_x = dataset[1][0][0]  # test spt set (100, 8)
+
+    problem = get_custom_problem(name=problem_name, n_var=n_var, n_obj=n_objectives, delta1=delta_finetune[0],
+                          delta2=delta_finetune[1])
+
+    pf_true = get_pf(n_objectives, problem, min_max)
+
+    res = minimize(problem=problem,
+                   algorithm=NSGA2(pop_size=proxy_pop_size, sampling=init_x),
+                   termination=('n_gen', 0.1))
+
+    history_x, history_f = res.X, res.F
+    history_x = history_x.astype(np.float32)
+    history_f = history_f.astype(np.float32)
+    history_f -= min_max[0]
+    history_f /= min_max[1]
+
+    metric = IGD(pf_true, zero_to_one=True)
+    igd.append(metric.do(history_f))
+    igd.append(igd[-1])
+
+    while fn_eval < fn_eval_limit:
+        algorithm_surrogate = NSGA2(pop_size=args.k_spt, sampling=history_x)
+        problem_surrogate = DTLZbProblem(n_var=n_var, n_obj=n_objectives, sol=sol)
+
+        res = minimize(problem_surrogate,
+                       algorithm_surrogate,
+                       ('n_gen', proxy_n_gen),
+                       verbose=False)
+
+        x = res.X
+
+        if len(x) > max_pts_num:
+            x = x[np.random.choice(x.shape[0], max_pts_num)]
+        x = x.astype(np.float32)
+
+        history_x = np.vstack((history_x, x))
+
+        fn_eval += x.shape[0]
+
+        y_true = evaluate(x, delta_finetune, n_objectives, problem_name, min_max=min_max)
+        y_true = y_true.astype(np.float32)
+
+        history_f = np.vstack((history_f, y_true))
+
+        reshaped_history_f = []
+        for i in range(n_objectives):
+            reshaped_history_f.append(history_f[:, i])
+        reshaped_history_f = np.array(reshaped_history_f, dtype=np.float32)
+        reshaped_history_f = reshaped_history_f.reshape((*reshaped_history_f.shape, 1))
+
+        sol.test_continue(history_x, reshaped_history_f, return_single_loss=True)
+
+        igd.append(metric.do(history_f))
+
+    del sol
+    return igd[-1]
+
+
+def post_mean_max(data: list | np.ndarray):
+    return np.mean(data), np.max(data)
+
+
+def runner(data):
+    gpu_sel, lock, seed, net_structure_list = data
+    gpu_id = -1
+    if isinstance(gpu_sel, int):
+        gpu_id = gpu_sel
+    else:
+        while gpu_id < 0:
+            try:
+                gpu_id = gpu_sel.get_gpu(lock=lock)
+            except RuntimeError:
+                time.sleep(1)
+    print(f'gpu_id: {gpu_id}', flush=True)
+    res = worker(gpu_id, seed, net_structure_list)
+    if not isinstance(gpu_sel, int):
+        gpu_sel.return_gpu(gpu_id, lock=lock)
+    return res
+
+
+def bench_runner(data):
+    func, post_func, args = data
+    args = [[(*args[0:2], s, args[3])] for s in args[2]]
+    ret = benchmark_for_seeds_different_args(func, post_func, seeds=CONFIG['seeds'], func_args=args)
     return ret
 
 
-def evaluate_model(model: nn.Module, dataset: str) -> List[float]:
-    if dataset not in DATASET:
-        DATASET[dataset] = get_dataset(dataset, CONFIG['n_var'], CONFIG['n_obj'], CONFIG['n_sample'])
-    old_model = model
-    loss_fn = nn.MSELoss()
-    final_loss = [0.0] * CONFIG['n_obj']
-    for i in range(CONFIG['n_obj']):
-        x, y = DATASET[dataset][i]
-        model = deepcopy(old_model)
-        optimizer = torch.optim.Adam(model.parameters(), lr=CONFIG['lr'])
-        for e in range(CONFIG['n_epoch']):
-            optimizer.zero_grad()
-            y_pred = model(x)
-            loss = loss_fn(y_pred, y)
-            final_loss[i] = loss.item()
-            loss.backward()
-            optimizer.step()
-    return final_loss
-
-
 class NasProblem(Problem):
-    def __init__(self, n_layer: int):
-        super().__init__(n_var=n_layer,
-                         n_obj=1+CONFIG['n_obj'],
+    def __init__(self):
+        super().__init__(n_var=CONFIG['layer'],
+                         n_obj=2,
                          n_constr=0,
-                         xl=CONFIG['lower_bound'],
-                         xu=CONFIG['upper_bound'],
+                         xl=15,
+                         xu=500,
                          vtype=int)
-        self.n_layer = n_layer
-        self.n_arg = CONFIG['n_var']
 
     def _evaluate(self, x, out, *args, **kwargs):
-        x = x.astype(int)
-        fs = []
-        for i in range(x.shape[0]):
-            model = TargetModel(self.n_layer, self.n_arg, x[i])
-            n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-            model.to(CONFIG['device'])
-            loss_arr = evaluate_model(model, CONFIG['dataset'])
-            fs.append([n_params, *loss_arr])
-        out['F'] = np.array(fs)
+        seeds = CONFIG['seeds']
+        with GpuManager() as gpu_manager:
+            with LockManager() as lock_manager:
+                the_lock = lock_manager.Lock()
+                n_gpu = CONFIG['n_gpu']
+                gpu_sel_param = CONFIG['gpu_sel_param']
+                if n_gpu > 1:
+                    gpu_sel_param = gpu_sel_param if gpu_sel_param is not None else tuple()
+                    gpu_selector = gpu_manager.GpuSelector(n_gpu, *gpu_sel_param)
+                else:
+                    gpu_selector = gpu_sel_param if gpu_sel_param is not None else 0
+                params = [(gpu_selector, the_lock, seeds, x[i]) for i in range(x.shape[0])]
+                params = [(runner, post_mean_max, param) for param in params]
+                n_para = CONFIG['n_parallel']
+                if n_para == 1:
+                    # no multiprocessing
+                    res = [bench_runner(param) for param in params]
+                else:
+                    with Pool(CONFIG['n_parallel'], maxtasksperchild=1) as p:
+                        res = p.map(bench_runner, params)
+        res = np.array(res)
+        out['F'] = res
 
 
-def save_result(data: Any, layer: int, pop_size: int, n_var: int) -> None:
-    name = f'results/result-layer_{layer}_pop_{pop_size}_var_{n_var}.pkl'
-    with open(name, 'wb') as f:
-        try:
-            pickle.dump(data, f)
-        except Exception as e:
-            print('dump failed', e)
-            return
-    print(f'dump success: {name}')
+def main():
+    pop_size = 50
+    n_gen = 100
+    the_seed = 42
 
-
-def test():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--layer', '-l', type=int, default=4)
-    parser.add_argument('--pop_size', '-p', type=int, default=50)
-    parser.add_argument('--n_gen', '-g', type=int, default=100)
-    parser.add_argument('--device', '-d', type=str, default=None)
-    args = parser.parse_args()
-    if args.device is not None:
-        CONFIG['device'] = torch.device(args.device)
-    n_layer = args.layer
-    pop_size = args.pop_size
-    n_gen = args.n_gen
-    problem = NasProblem(n_layer)
-    n_var = CONFIG['n_var']
-    initial_pop = [[2*n_var, *[4*n_var for _ in range(n_layer - 2)], 2*n_var], [100]*n_layer]
-    len_remain = 2*pop_size - len(initial_pop)
+    random.seed(the_seed)
+    seeds = random.sample(range(100000), 50)
+    CONFIG['seeds'] = seeds
+    for seed in seeds:
+        cache_dataset(seed)
+    random.seed(the_seed)
+    np.random.seed(the_seed)
+    problem = NasProblem()
+    initial_pop = [[15, 15, 15]]
+    len_remain = 2 * pop_size - len(initial_pop)
     remain_pop = np.random.randint(
-        low=CONFIG['lower_bound'], high=CONFIG['upper_bound'],
-        size=(len_remain, n_layer), dtype=int
+        low=10, high=500,
+        size=(len_remain, CONFIG['layer']), dtype=int
     )
+
     initial_pop = np.concatenate([initial_pop, remain_pop], axis=0)
     algorithm = NSGA2(
         pop_size=pop_size,
@@ -146,6 +278,7 @@ def test():
         mutation=PM(prob=1.0, eta=3.0, vtype=float, repair=RoundingRepair()),
         eliminate_duplicates=True,
     )
+    print('Init OK')
     res = minimize(
         problem,
         algorithm,
@@ -155,8 +288,16 @@ def test():
     )
     print(res.X)
     print(res.F)
-    save_result(res, n_layer, pop_size, n_var)
+    try:
+        os.makedirs('results')
+    except FileExistsError:
+        pass
+    try:
+        with open('results/nas_results.pkl', 'wb') as f:
+            pickle.dump(res, f)
+    except Exception as e:
+        print(f'Pickle Dump Error: {e}')
 
 
 if __name__ == '__main__':
-    test()
+    main()

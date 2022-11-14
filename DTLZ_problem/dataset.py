@@ -203,7 +203,7 @@ def evaluate(x: np.ndarray, delta: Tuple[int, int], n_objectives: int, problem_n
 
 
 def get_pf(n_objectives: int, problem: Any,
-           min_max: Tuple[float | None, float | None]) -> np.ndarray:
+           min_max: Tuple[float | None, float | None] | None = None) -> np.ndarray:
     """
     Parameters
     ----------
@@ -221,7 +221,7 @@ def get_pf(n_objectives: int, problem: Any,
     Returns
     -------
     np.ndarray
-        The parato front, shape (n_point, n_objectives)
+        The Pareto front, shape (n_point, n_objectives)
     """
     # change delta here
     # problem = get_problem(name=problem_name, n_var=n_var, n_obj=n_objectives, delta1=delta[0], delta2=delta[1])
@@ -234,7 +234,7 @@ def get_pf(n_objectives: int, problem: Any,
                    algorithm,
                    termination=('n_gen', 100))
     pf = res.F
-    if min_max[0] is not None:
+    if min_max is not None and min_max[0] is not None:
         pf -= min_max[0]
         pf /= min_max[1]
     return pf
@@ -284,8 +284,13 @@ def get_moea_data(n_var: int, n_objectives: int, delta: Tuple[int, int], algorit
     for algo in hist:
         n_evals.append(algo.evaluator.n_eval)
         opt = algo.opt
-        feas = np.where(opt.get("feasible"))[0]
-        hist_F.append(opt.get("F")[feas])
+        # feas = np.where(opt.get("feasible"))[0]
+        # hist_F.append(opt.get("F")[feas])
+        feas_pop = np.where(algo.pop.get("feasible"))[0]
+        feas_off = np.where(algo.off.get("feasible"))[0]
+        hist_F.append(np.concatenate([algo.pop.get("F")[feas_pop], algo.off.get("F")[feas_off]], axis=0))
+        if len(hist_F) > 1:
+            hist_F[-1] = np.unique(np.concatenate([hist_F[-2], hist_F[-1]], axis=0), axis=0)
     if min_max[0] is not None:
         for _F in hist_F:
             _F -= min_max[0]

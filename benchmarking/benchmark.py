@@ -45,7 +45,7 @@ def _multi_processing_wrapper(data: tuple) -> Any:
     try:
         ret = func(*args, **kwargs)
     except Exception as e:
-        print(f'Error in {seed=}: {e}')
+        print(f'Error in {seed=}: {e}', flush=True)
         ret = None
 
     print(f'{seed=} finished')
@@ -112,7 +112,7 @@ def benchmark_for_seeds(func: Callable,
         try:
             set_start_method(new_proc_method)
         except RuntimeError as e:
-            warnings.warn(f'Cannot set the start method to {new_proc_method}, {e}')
+            pass
     random.seed(init_seed)
     availabilities = {
         'numpy': False,
@@ -164,6 +164,81 @@ def benchmark_for_seeds(func: Callable,
     else:
         for seed in seeds:
             results.append(_multi_processing_wrapper((func, func_args, func_kwargs, seed, availabilities)))
+    ret = post_process(results, *post_process_args, **post_process_kwargs)
+    gc.collect()
+    return ret
+
+
+def benchmark_for_seeds_different_args(func: Callable,
+                                       post_process: Callable,
+                                       seeds: List[int] | int = 10,
+                                       func_args: List[List[Any]] = None,
+                                       func_kwargs: List[dict] | None = None,
+                                       post_process_args: List[Any] = None,
+                                       post_process_kwargs: dict | None = None,
+                                       n_proc: int = 1,
+                                       new_proc_method: Literal['fork', 'spawn'] = 'spawn',
+                                       init_seed: int = 42) -> Any:
+    """
+    See `benchmark_for_seeds` for the meaning of the parameters, except that args and kwargs are lists
+    """
+    # initialize the random seeds with 42
+    if get_start_method() != new_proc_method:
+        try:
+            set_start_method(new_proc_method)
+        except RuntimeError as e:
+            pass
+    random.seed(init_seed)
+    availabilities = {
+        'numpy': False,
+        # 'scipy': False,
+        'torch': False,
+        'tensorflow': False,
+    }
+    try:
+        import numpy as np
+        availabilities['numpy'] = True
+    except ImportError:
+        pass
+    # try:
+    #     import scipy
+    #     availabilities['scipy'] = True
+    # except ImportError:
+    #     pass
+    try:
+        import torch
+        availabilities['torch'] = True
+    except ImportError:
+        pass
+    try:
+        import tensorflow as tf
+        availabilities['tensorflow'] = True
+    except ImportError:
+        pass
+    if func_args is None:
+        func_args = [[]] * len(seeds)
+    if func_kwargs is None:
+        func_kwargs = [{}] * len(seeds)
+    if post_process_args is None:
+        post_process_args = []
+    if post_process_kwargs is None:
+        post_process_kwargs = {}
+    if isinstance(seeds, int):
+        seeds = random.sample(range(100000), seeds)
+    if n_proc <= 0:
+        n_proc = os.cpu_count()
+        if n_proc is None:
+            n_proc = 1
+    results = []
+    if n_proc > 1:
+        with Pool(n_proc, maxtasksperchild=1) as pool:
+            results = pool.map(_multi_processing_wrapper, [
+                (func, func_args[i], func_kwargs[i], seed, availabilities)
+                for i, seed in enumerate(seeds)
+            ])
+    else:
+        for i, seed in enumerate(seeds):
+            results.append(_multi_processing_wrapper((func, func_args[i], func_kwargs[i], seed, availabilities)))
     ret = post_process(results, *post_process_args, **post_process_kwargs)
     gc.collect()
     return ret
