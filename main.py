@@ -81,12 +81,13 @@ def main_NSGA_1b():
 
     delta_finetune = np.array(delta[1])[:, -1]
 
-    pf_true = get_pf(n_var, n_objectives, delta_finetune, problem_name, min_max)
-
     init_x = dataset[1][0][0]  # test spt set (100, 8)
 
     problem = get_problem(name=problem_name, n_var=n_var, n_obj=n_objectives, delta1=delta_finetune[0],
                           delta2=delta_finetune[1])
+
+    pf_true = get_pf(n_objectives, problem_name, min_max)
+
     res = minimize(problem=problem,
                    algorithm=NSGA2(pop_size=pop_size, sampling=init_x),
                    termination=('n_gen', 0.1))
@@ -202,12 +203,13 @@ def main_NSGA_4c(print_progress=False, do_plot=False, do_train=True):
 
     delta_finetune = np.array(delta[1])[:, -1]
 
-    pf_true = get_pf(n_var, n_objectives, delta_finetune, problem_name, min_max)
-
     init_x = dataset[1][0][0]  # test spt set (100, 8)
 
     problem = get_problem(name=problem_name, n_var=n_var, n_obj=n_objectives, delta1=delta_finetune[0],
                           delta2=delta_finetune[1])
+    
+    pf_true = get_pf(n_objectives, problem, min_max)
+
     res = minimize(problem=problem,
                    algorithm=NSGA2(pop_size=proxy_pop_size, sampling=init_x),
                    termination=('n_gen', 0.1))
@@ -233,10 +235,11 @@ def main_NSGA_4c(print_progress=False, do_plot=False, do_train=True):
 
     while fn_eval < fn_eval_limit:
         cprint(f'fn_eval: {fn_eval}', do_print=print_progress)
-        algorithm = NSGA2(pop_size=args.k_spt, sampling=history_x)
+        algorithm_surrogate = NSGA2(pop_size=args.k_spt, sampling=history_x)
+        problem_surrogate = DTLZbProblem(n_var=n_var, n_obj=n_objectives, sol=sol)
 
-        res = minimize(DTLZbProblem(n_var=n_var, n_obj=n_objectives, sol=sol),
-                       algorithm,
+        res = minimize(problem_surrogate,
+                       algorithm_surrogate,
                        ("n_gen", proxy_n_gen),
                        verbose=False)
 
@@ -271,6 +274,9 @@ def main_NSGA_4c(print_progress=False, do_plot=False, do_train=True):
         # metric = IGD(pf_true, zero_to_one=True)
         igd.append(metric.do(history_f))
         func_eval_igd.append(fn_eval)
+
+        pf_true_surrogate = get_pf(n_objectives, problem_surrogate, min_max)
+        visualize_pf(pf=pf_true_surrogate, label='Sorrogate PF', color='green', scale=[0.7] * 3)
 
     # pf = evaluate(res.X, delta_finetune, n_objectives, min_max=min_max)
     cprint('Algorithm complete', do_print=print_progress)
@@ -359,6 +365,6 @@ def main_benchmark():
 if __name__ == '__main__':
     # main()
     # main_NSGA_4c(do_plot=True, print_progress=True, do_train=False)
-    # main_NSGA_4c(do_plot=True, print_progress=True, do_train=True)
-    main_benchmark()
+    main_NSGA_4c(do_plot=True, print_progress=True, do_train=True)
+    # main_benchmark()
 
