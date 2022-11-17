@@ -7,11 +7,11 @@ from pymoo.util.ref_dirs import get_reference_directions
 from pymoo.optimize import minimize
 from pymoo.indicators.igd import IGD
 from pymoo.algorithms.moo.nsga3 import NSGA3
-from .problem import get_problem
+from .problem import get_custom_problem
 
 
 def pf_data(n_var: int, n_objective: int, delta1: int, delta2: int, problem_name: str) -> np.ndarray:
-    problem = get_problem(name=problem_name, n_var=n_var, n_obj=n_objective, delta1=delta1, delta2=delta2)  # change delta here
+    problem = get_custom_problem(name=problem_name, n_var=n_var, n_obj=n_objective, delta1=delta1, delta2=delta2)  # change delta here
     ref_dirs = get_reference_directions("das-dennis", n_objective, n_partitions=12)
     N = ref_dirs.shape[0]
     # create the algorithm object
@@ -48,7 +48,7 @@ def create_dataset_inner(x, n_dim: Tuple[int, int], delta: Tuple[List[int], List
     n_var, n_obj = n_dim
     y = []
     for i in range(n_problem):
-        problem = get_problem(name=problem_name, n_var=n_var, n_obj=n_obj, delta1=delta1[i], delta2=delta2[i])
+        problem = get_custom_problem(name=problem_name, n_var=n_var, n_obj=n_obj, delta1=delta1[i], delta2=delta2[i])
         y.extend([*problem.evaluate(x[i]).transpose()])
     y = np.array(y).astype(np.float32)
     new_x = np.repeat(x, n_obj, axis=0).astype(np.float32)
@@ -166,7 +166,7 @@ def evaluate(x: np.ndarray, delta: Tuple[int, int], n_objectives: int, problem_n
         The output data, shape (n_point, n_objectives)
     """
     n_variables = x.shape[1]
-    problem = get_problem(name=problem_name, n_var=n_variables, n_obj=n_objectives, delta1=delta[0], delta2=delta[1])
+    problem = get_custom_problem(name=problem_name, n_var=n_variables, n_obj=n_objectives, delta1=delta[0], delta2=delta[1])
     y = problem.evaluate(x)
     if min_max[0] is not None:
         y -= min_max[0]
@@ -271,7 +271,7 @@ def get_moea_data(n_var: int, n_objectives: int, delta: Tuple[int, int], algorit
         n_evals: The number of function evaluations
         igd: The IGD
     """
-    problem = get_problem(name=problem_name, n_var=n_var, n_obj=n_objectives, delta1=delta[0], delta2=delta[1])  # change delta here
+    problem = get_custom_problem(name=problem_name, n_var=n_var, n_obj=n_objectives, delta1=delta[0], delta2=delta[1])  # change delta here
     res = minimize(problem,
                    algorithm,
                    termination=('n_gen', n_gen),
