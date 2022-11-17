@@ -166,7 +166,7 @@ class DTLZbProblem(Problem):
         out["F"] = np.array(f)
 
 
-def get_problem(name, *args, **kwargs):
+def get_custom_problem(name, *args, **kwargs):
 
     PROBLEM = {
         "DTLZ4c": DTLZ4c,
