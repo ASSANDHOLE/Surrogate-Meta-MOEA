@@ -12,7 +12,7 @@ from utils import NamedDict
 def get_args():
     args = NamedDict()
     args.problem_dim = (10, 3)
-    args.train_test = (30, 1)
+    args.train_test = (300, 1)
     args.epoch = 100
     args.update_lr = 0.02
     args.meta_lr = 0.01

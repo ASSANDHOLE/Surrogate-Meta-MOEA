@@ -69,14 +69,14 @@ def main_NSGA_1b():
     # generate delta
     delta = []
     for i in range(2):
-        delta.append([np.random.randint(0, 100, args.train_test[i]), np.random.randint(0, 10, args.train_test[i])])
+        delta.append([np.random.rand(0, 5, args.train_test[i]), np.random.rand(0, 5, args.train_test[i])])
     x = [None, None, None, None]
     x[2] = sampling_lhs(n_samples=11 * n_var - 1, n_var=n_var, xl=0, xu=1)
     # sample 'arg.k_spt' from x[2]
     x[2] = x[2][np.random.choice(x[2].shape[0], args.k_spt, replace=False), :]
     dataset, min_max = get_dataset(args, normalize_targets=True, delta=delta, problem_name=problem_name)
     sol = MamlWrapper(dataset, args, network_structure)
-    # train_loss = sol.train(explicit=False)
+    train_loss = sol.train(explicit=False)
     test_loss = sol.test(return_single_loss=False)
 
     delta_finetune = np.array(delta[1])[:, -1]
@@ -234,7 +234,7 @@ def main_NSGA_4c(print_progress=False, do_plot=False, do_train=True):
     cprint('Algorithm init complete', do_print=print_progress)
 
     plot_int = 30
-    plotted = 1000
+    plotted = 1
 
     while fn_eval < fn_eval_limit:
         cprint(f'fn_eval: {fn_eval}', do_print=print_progress)
@@ -374,7 +374,21 @@ def main_benchmark():
     print(f'NON-Trained  IGD: {_res[0]} +- {_res[1]}')
 
 
+def fast_seed(seed: int) -> None:
+    import numpy as np
+    import random
+    import torch
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+
 if __name__ == '__main__':
+    fast_seed(42)
     # main()
     # main_NSGA_4c(do_plot=True, print_progress=True, do_train=False)
     main_NSGA_4c(do_plot=True, print_progress=True, do_train=True)

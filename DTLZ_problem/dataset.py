@@ -23,7 +23,7 @@ def pf_data(n_var: int, n_objective: int, delta1: int, delta2: int, problem_name
     return res.X
 
 
-def create_dataset_inner(x, n_dim: Tuple[int, int], delta: Tuple[List[int], List[int]], problem_name: str) -> Tuple[
+def create_dataset_inner(x, n_dim: Tuple[int, int], delta: Tuple[List[int | float], List[int | float]], problem_name: str) -> Tuple[
     np.ndarray, np.ndarray
 ]:
     """
@@ -33,7 +33,7 @@ def create_dataset_inner(x, n_dim: Tuple[int, int], delta: Tuple[List[int], List
         The input data, shape (n_problem, n_spt, n_variables)
     n_dim : Tuple[int, int]
         The number of variables and number of objectives
-    delta : Tuple[List[int], List[int]]
+    delta : Tuple[List[int | float], List[int | float]]
         The delta1 and delta2 for each problem
     problem_name : str
         The problem name
