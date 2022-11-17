@@ -1,6 +1,7 @@
 import numpy as np
 from pymoo.core.problem import Problem
 from pymoo.problems.many.dtlz import get_ref_dirs
+from pymoo.util.remote import Remote
 
 from maml_mod import MamlWrapper
 
@@ -70,6 +71,30 @@ class DTLZ1b(DTLZb):
         X_, X_M = x[:, :self.n_obj - 1], x[:, self.n_obj - 1:]
         g = self.g1(X_M)
         out["F"] = self.obj_func(X_, g)
+
+
+class DTLZ7b(DTLZb):
+    def __init__(self, n_var=10, n_obj=3, delta1=0, delta2=0, **kwargs):
+        self.delta1 = delta1
+        self.delta2 = delta2
+        super().__init__(n_var=n_var, n_obj=n_obj, delta1=delta1, delta2=delta2, **kwargs)
+
+    def _calc_pareto_front(self):
+        if self.n_obj == 3:
+            return Remote.get_instance().load("pymoo", "pf", "dtlz7-3d.pf")
+        else:
+            raise Exception("Not implemented yet.")
+
+    def _evaluate(self, x, out, *args, **kwargs):
+        f = []
+        for i in range(0, self.n_obj - 1):
+            f.append(x[:, i])
+        f = np.column_stack(f)
+
+        g = 1 + 9 / self.k * np.sum(x[:, -self.k:], axis=1) + self.delta1
+        h = self.n_obj - np.sum(f / (1 + g[:, None]) * (1 + np.sin(3 * np.pi * f)), axis=1)
+
+        out["F"] = np.column_stack([f, (1 + g) * h + self.delta2])
 
 
 class DTLZc(Problem):
@@ -145,7 +170,8 @@ def get_problem(name, *args, **kwargs):
 
     PROBLEM = {
         "DTLZ4c": DTLZ4c,
-        "DTLZ1b": DTLZ1b
+        "DTLZ1b": DTLZ1b,
+        "DTLZ7b": DTLZ7b
     }
 
     if name not in PROBLEM:
