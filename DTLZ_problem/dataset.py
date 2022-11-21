@@ -1,13 +1,16 @@
 from __future__ import annotations
 
-from typing import Tuple, List, Any
+from typing import Tuple, List, Any, Literal
 
 import numpy as np
 from pymoo.util.ref_dirs import get_reference_directions
 from pymoo.optimize import minimize
 from pymoo.indicators.igd import IGD
 from pymoo.algorithms.moo.nsga3 import NSGA3
-from .problem import get_custom_problem
+try:
+    from .problem import get_custom_problem
+except ImportError:
+    from problem import get_custom_problem
 
 
 def pf_data(n_var: int, n_objective: int, delta1: int, delta2: int, problem_name: str) -> np.ndarray:
@@ -23,7 +26,7 @@ def pf_data(n_var: int, n_objective: int, delta1: int, delta2: int, problem_name
     return res.X
 
 
-def create_dataset_inner(x, n_dim: Tuple[int, int], delta: Tuple[List[int | float], List[int | float]], problem_name: str) -> Tuple[
+def create_dataset_inner_0d(x, n_dim: Tuple[int, int], delta: Tuple[List[int | float], List[int | float]], problem_name: str) -> Tuple[
     np.ndarray, np.ndarray
 ]:
     """
@@ -55,8 +58,22 @@ def create_dataset_inner(x, n_dim: Tuple[int, int], delta: Tuple[List[int | floa
     return new_x, y
 
 
+def create_dataset_inner_1d(x, n_dim: Tuple[int, int], delta: Tuple[List[int | float], List[int | float]], problem_name: str) -> Tuple[
+    np.ndarray, np.ndarray
+]:
+    delta1, delta2 = delta
+    n_problem = len(delta1)
+    n_var, n_obj = n_dim
+    y = []
+    for i in range(n_problem):
+        problem = get_custom_problem(name=problem_name, n_var=n_var, n_obj=n_obj, delta1=delta1[i], delta2=delta2[i])
+        y.extend([problem.evaluate(x[i])])
+    y = np.array(y).astype(np.float32)
+    return x, y
+
+
 def create_dataset(problem_dim: Tuple[int, int], problem_name: str, x=None, n_problem=None, spt_qry=None, delta=None, 
-                   normalize_targets=True, **_) -> Tuple[
+                   normalize_targets=True, dim: Literal[0, 1] = 0, **_) -> Tuple[
     Tuple[
         Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
         Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
@@ -79,6 +96,8 @@ def create_dataset(problem_dim: Tuple[int, int], problem_name: str, x=None, n_pr
         The number of support and query points for each problem
     normalize_targets : bool
         Whether to normalize the targets
+    dim : int
+        The dimension of the problem
 
     Returns
     -------
@@ -95,6 +114,8 @@ def create_dataset(problem_dim: Tuple[int, int], problem_name: str, x=None, n_pr
         In the second Tuple:
             The minimum and maximum of the targets (to be used for normalization)
     """
+    create_dataset_inner = create_dataset_inner_0d if dim == 0 else create_dataset_inner_1d
+
     def generate_x(_i, _j):
         x_pf = []
         for k in range(n_problem[_i]):
@@ -304,8 +325,8 @@ def get_moea_data(n_var: int, n_objectives: int, delta: Tuple[int, int], algorit
 
 
 def test():
-    n_dim = (8, 3)
-    train_set, test_set = create_dataset(n_dim, n_problem=(4, 2), spt_qry=(5, 20))  # (12, 5, 7)
+    n_dim = (10, 3)
+    train_set, test_set = create_dataset(problem_dim=n_dim, problem_name='DTLZ1b', n_problem=(4, 2), spt_qry=(5, 20), dim=1)  # (12, 5, 7)
     print(train_set[0].shape, train_set[1].shape, test_set[0].shape, test_set[1].shape)
 
 

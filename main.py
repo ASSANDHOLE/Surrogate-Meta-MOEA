@@ -21,7 +21,7 @@ def cprint(*args, do_print=True, **kwargs):
         print(*args, **kwargs)
 
 
-def main():
+def test():
     # see Sol.__init__ for more information
     args = get_args()
     network_structure = get_network_structure(args)
@@ -53,124 +53,7 @@ def main():
     visualize_loss(test_loss, random_loss)
 
 
-def main_NSGA_1b():
-    args = get_args()
-    n_var = args.problem_dim[0]
-    n_objectives = args.problem_dim[1]
-    igd = []
-    fn_eval = args.k_spt
-    fn_eval_limit = 300 - 2
-    max_pts_num = 5
-    pop_size = 50
-    n_gen = 10
-    problem_name = "DTLZ1b"
-
-    network_structure = get_network_structure(args)
-    # generate delta
-    delta = []
-    for i in range(2):
-        delta.append([np.random.rand(0, 5, args.train_test[i]), np.random.rand(0, 5, args.train_test[i])])
-    x = [None, None, None, None]
-    x[2] = sampling_lhs(n_samples=11 * n_var - 1, n_var=n_var, xl=0, xu=1)
-    # sample 'arg.k_spt' from x[2]
-    x[2] = x[2][np.random.choice(x[2].shape[0], args.k_spt, replace=False), :]
-    dataset, min_max = get_dataset(args, normalize_targets=True, delta=delta, problem_name=problem_name)
-    sol = MamlWrapper(dataset, args, network_structure)
-    train_loss = sol.train(explicit=False)
-    test_loss = sol.test(return_single_loss=False)
-
-    delta_finetune = np.array(delta[1])[:, -1]
-
-    init_x = dataset[1][0][0]  # test spt set (100, 8)
-
-    problem = get_custom_problem(name=problem_name, n_var=n_var, n_obj=n_objectives, delta1=delta_finetune[0],
-                                 delta2=delta_finetune[1])
-
-    pf_true = get_pf(n_objectives, problem_name, min_max)
-
-    res = minimize(problem=problem,
-                   algorithm=NSGA2(pop_size=pop_size, sampling=init_x),
-                   termination=('n_gen', 0.1))
-
-    history_x, history_f = res.X, res.F
-    history_x = history_x.astype(np.float32)
-    history_f = history_f.astype(np.float32)
-    history_f -= min_max[0]
-    history_f /= min_max[1]
-
-    metric = IGD(pf_true, zero_to_one=True)
-    igd.append(metric.do(history_f))
-    igd.append(igd[-1])
-
-    # only for visualization
-    Y_igd = []
-    Y_igd.append(metric.do(history_f))
-    Y_igd.append(igd[-1])
-
-    func_eval_igd = [0, fn_eval]
-
-    while fn_eval < fn_eval_limit:
-
-        algorithm = NSGA2(pop_size=args.k_spt, sampling=history_x)
-
-        res = minimize(DTLZbProblem(n_var=n_var, n_obj=n_objectives, sol=sol),
-                       algorithm,
-                       ("n_gen", n_gen),
-                       seed=1,
-                       verbose=False)
-
-        X = res.X
-        # only for visualization
-        Y_true = evaluate(X, delta_finetune, n_objectives, min_max=min_max, problem_name=problem_name)
-        Y_igd.append(metric.do(Y_true))
-
-        if len(X) > max_pts_num:
-            X = X[np.random.choice(X.shape[0], max_pts_num)]
-        X = X.astype(np.float32)
-
-        history_x = np.vstack((history_x, X))
-        # history_f = np.vstack((history_f, res.F))
-
-        fn_eval += X.shape[0]
-
-        y_true = evaluate(X, delta_finetune, n_objectives, min_max=min_max, problem_name=problem_name)
-        y_true = y_true.astype(np.float32)
-
-        history_f = np.vstack((history_f, y_true))
-
-        reshaped_history_f = []
-        for i in range(n_objectives):
-            reshaped_history_f.append(history_f[:, i])
-        reshaped_history_f = np.array(reshaped_history_f, dtype=np.float32)
-        reshaped_history_f = reshaped_history_f.reshape((*reshaped_history_f.shape, 1))
-
-        sol.test_continue(history_x, reshaped_history_f)
-
-        # metric = IGD(pf_true, zero_to_one=True)
-        igd.append(metric.do(history_f))
-        func_eval_igd.append(fn_eval)
-
-    # pf = evaluate(res.X, delta_finetune, n_objectives, min_max=min_max)
-    pf = history_f
-    moea_pf, n_evals_moea, igd_moea = get_moea_data(n_var, n_objectives, delta_finetune,
-                                                    NSGA2(pop_size=pop_size, sampling=init_x),
-                                                    int(fn_eval_limit / pop_size), metric, problem_name, min_max)
-    n_evals_moea = np.insert(n_evals_moea, 0, 0)
-    igd_moea = np.insert(igd_moea, 0, igd[0])
-    print(n_evals_moea)
-
-    visualize_pf(pf=pf, label='Sorrogate PF', color='green', scale=[0.5] * 3, pf_true=pf_true)
-    visualize_pf(pf=moea_pf, label='NSGA-II PF', color='blue', scale=[0.5] * 3, pf_true=pf_true)
-
-    func_evals = [func_eval_igd, n_evals_moea, func_eval_igd]
-    igds = [igd, igd_moea, Y_igd]
-    colors = ['black', 'blue', 'green']
-    labels = ["Our Surrogate Model", "NSGA-II", "Test"]
-    visualize_igd(func_evals, igds, colors, labels)
-    plt.show()
-
-
-def main_NSGA_4c(print_progress=False, do_plot=False, do_train=True):
+def main(print_progress=False, do_plot=False, do_train=True):
     args = get_args()
     n_var = args.problem_dim[0]
     n_objectives = args.problem_dim[1]
@@ -187,7 +70,7 @@ def main_NSGA_4c(print_progress=False, do_plot=False, do_train=True):
     # generate delta
     delta = []
     for i in range(2):
-        delta.append([np.random.randint(0, 100, args.train_test[i]), np.random.randint(0, 10, args.train_test[i])])
+        delta.append([np.random.rand(args.train_test[i])*8, np.random.rand(args.train_test[i])*8])
     x = [None, None, None, None]
     x[2] = sampling_lhs(n_samples=11 * n_var - 1, n_var=n_var, xl=0, xu=1)
     # sample 'arg.k_spt' from x[2]
@@ -300,8 +183,18 @@ def main_NSGA_4c(print_progress=False, do_plot=False, do_train=True):
     cprint('MOEA Baseline complete', do_print=print_progress)
 
     if do_plot:
-        visualize_pf(pf=pf, label='Surrogate PF', color='green', scale=[0.7] * 3, pf_true=pf_true)
-        visualize_pf(pf=moea_pf, label='NSGA-II PF', color='blue', scale=[0.7] * 3, pf_true=pf_true)
+        scale = []
+        for i in range(n_objectives):
+            concatenated = np.concatenate([pf[:, i], pf_true[:, i]]),
+            data = [np.min(concatenated), np.max(concatenated)]
+            scale.append(data)
+        visualize_pf(pf=pf, label='Surrogate PF', color='green', scale=scale, pf_true=pf_true)
+        scale = []
+        for i in range(n_objectives):
+            concatenated = np.concatenate([moea_pf[:, i], pf_true[:, i]]),
+            data = [np.min(concatenated), np.max(concatenated)]
+            scale.append(data)
+        visualize_pf(pf=moea_pf, label='NSGA-II PF', color='blue', scale=scale, pf_true=pf_true)
 
     func_evals = [func_eval_igd, n_evals_moea, func_eval_igd]
     igds = [igd, igd_moea, Y_igd]
@@ -358,14 +251,14 @@ def main_benchmark():
     _n_proc = 1
     init_seed = 42
     usage_check(_n_proc)
-    _res = benchmark_for_seeds(main_NSGA_4c,
+    _res = benchmark_for_seeds(main,
                                post_mean_std,
                                seeds=_seeds,
                                func_kwargs={'print_progress': False, 'do_train': True},
                                n_proc=_n_proc,
                                init_seed=init_seed)
     print(f'MAML Trained IGD: {_res[0]} +- {_res[1]}')
-    _res = benchmark_for_seeds(main_NSGA_4c,
+    _res = benchmark_for_seeds(main,
                                post_mean_std,
                                seeds=_seeds,
                                func_kwargs={'print_progress': False, 'do_train': False},
@@ -391,5 +284,5 @@ if __name__ == '__main__':
     fast_seed(42)
     # main()
     # main_NSGA_4c(do_plot=True, print_progress=True, do_train=False)
-    main_NSGA_4c(do_plot=True, print_progress=True, do_train=True)
+    main(do_plot=True, print_progress=True, do_train=True)
     # main_benchmark()
