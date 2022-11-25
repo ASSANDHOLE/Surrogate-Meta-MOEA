@@ -12,11 +12,11 @@ from utils import NamedDict
 def get_args():
     args = NamedDict()
     args.problem_dim = (10, 3)
-    args.train_test = (100, 1)
+    args.train_test = (300, 1)
     args.epoch = 50
-    args.update_lr = 0.02
-    args.meta_lr = 0.01
-    args.fine_tune_lr = 0.04
+    args.update_lr = 0.0025
+    args.meta_lr = 0.001
+    args.fine_tune_lr = 0.005
     args.k_spt = 30
     args.k_qry = 200
     args.update_step = 10
@@ -29,22 +29,24 @@ def get_args():
 def get_network_structure(args):
     n_args = args.problem_dim[0]
     config = [
-        ('linear', [15, n_args]),
+        # ('linear', [2 * n_args, n_args]),
+        # ('relu', [True]),
+        # ('linear', [4 * n_args, 2 * n_args]),
+        # ('relu', [True]),
+        # ('linear', [4 * n_args, 4 * n_args]),
+        # ('relu', [True]),
+        # ('linear', [2 * n_args, 4 * n_args]),
+        # ('relu', [True]),
+        # ('linear', [1, 2 * n_args]),
+        ('linear', [100, n_args]),
         ('relu', [True]),
-        ('linear', [15, 15]),
+        ('linear', [200, 100]),
         ('relu', [True]),
-        ('linear', [15, 15]),
+        ('linear', [200, 200]),
         ('relu', [True]),
-        ('linear', [1, 15]),
-        # ('linear', [100, n_args]),
-        # ('relu', [True]),
-        # ('linear', [200, 100]),
-        # ('relu', [True]),
-        # ('linear', [200, 200]),
-        # ('relu', [True]),
-        # ('linear', [100, 200]),
-        # ('relu', [True]),
-        # ('linear', [1, 100]),
+        ('linear', [100, 200]),
+        ('relu', [True]),
+        ('linear', [1, 100]),
     ]
     return config
 

@@ -90,7 +90,9 @@ class MamlWrapper:
 
         loss_arr = []
         for epoch in range(self.args.epoch):
-            loss_arr.append(self.maml(*self.train_set))
+            train = np.random.choice(np.arange(self.train_set[0].shape[0], dtype=int), 50)
+            train = [data[train] for data in self.train_set]
+            loss_arr.append(self.maml(*train))
             if print_loss and (epoch % print_period == 0 or epoch == self.args.epoch - 1):
                 print(f'Epoch {epoch:4d}: {loss_arr[-1]:.4f}')
         return loss_arr

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Tuple, List, Any, Literal
+from multiprocessing import Pool
 
 import numpy as np
 from pymoo.util.ref_dirs import get_reference_directions
@@ -73,7 +74,7 @@ def create_dataset_inner_1d(x, n_dim: Tuple[int, int], delta: Tuple[List[int | f
 
 
 def create_dataset(problem_dim: Tuple[int, int], problem_name: str, x=None, n_problem=None, spt_qry=None, delta=None, 
-                   normalize_targets=True, dim: Literal[0, 1] = 0, **_) -> Tuple[
+                   normalize_targets=True, dim: Literal[0, 1] = 0, pf_ratio: float = 0.5, **_) -> Tuple[
     Tuple[
         Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
         Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
@@ -116,14 +117,17 @@ def create_dataset(problem_dim: Tuple[int, int], problem_name: str, x=None, n_pr
     """
     create_dataset_inner = create_dataset_inner_0d if dim == 0 else create_dataset_inner_1d
 
-    def generate_x(_i, _j):
+    def generate_x(_i, _j, ratio_of_pf: float = 0.5):
         x_pf = []
-        for k in range(n_problem[_i]):
-            ps = pf_data(n_var, n_obj, delta[_i][_j][k], delta[_i][_j][k], problem_name)
-            x_pf.append(ps[np.random.choice(ps.shape[0], int(0.5 * spt_qry[_j]))])
-        x_pf = np.array(x_pf)
-        x_ran = np.random.rand(n_problem[_i], spt_qry[_j] - int(0.5 * spt_qry[_j]), n_var)
-        return np.concatenate((x_pf, x_ran), axis=1)
+        pf_num = int(ratio_of_pf * spt_qry[_j])
+        pf_num = pf_num if pf_num > 0 else 0
+        if pf_num > 0:
+            for k in range(n_problem[_i]):
+                ps = pf_data(n_var, n_obj, delta[_i][_j][k], delta[_i][_j][k], problem_name)
+                x_pf.append(ps[np.random.choice(ps.shape[0], pf_num)])
+            x_pf = np.array(x_pf)
+        x_ran = np.random.rand(n_problem[_i], spt_qry[_j] - pf_num, n_var)
+        return np.concatenate((x_pf, x_ran), axis=1) if pf_num > 0 else x_ran
 
     n_var, n_obj = problem_dim
 
@@ -143,7 +147,7 @@ def create_dataset(problem_dim: Tuple[int, int], problem_name: str, x=None, n_pr
     for i in range(2):
         for j in range(2):
             if x[i * 2 + j] is None:
-                x[i * 2 + j] = generate_x(i, j)
+                x[i * 2 + j] = generate_x(i, j, pf_ratio)
             # x.append(np.random.rand(n_problem[i], spt_qry[j], n_var))
 
     train_set = [*create_dataset_inner(x[0], problem_dim, delta[0], problem_name), *create_dataset_inner(x[1], problem_dim, delta[0], problem_name)]
@@ -331,4 +335,4 @@ def test():
 
 
 if __name__ == '__main__':
-    test()
+    get_pf(n_objectives=3, problem=None)

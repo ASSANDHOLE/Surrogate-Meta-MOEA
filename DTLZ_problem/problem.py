@@ -111,7 +111,7 @@ class DTLZc(Problem):
             raise Exception("Either provide number of variables or k!")
 
         super().__init__(n_var=n_var, n_obj=n_obj, n_constr=0, xl=0, xu=1, type_var=np.double)
-    
+
     def g1(self, X_M):
         return np.sum(np.square(X_M - 0.5), axis=1)
 
@@ -129,6 +129,7 @@ class DTLZc(Problem):
 
         f = np.column_stack(f)
         return f
+
 
 class DTLZ4c(DTLZc):
     def __init__(self, n_var=10, n_obj=3, alpha=100, d=100, delta1=0, delta2=0, **kwargs):
@@ -167,7 +168,6 @@ class DTLZbProblem(Problem):
 
 
 def get_custom_problem(name, *args, **kwargs):
-
     PROBLEM = {
         "DTLZ4c": DTLZ4c,
         "DTLZ1b": DTLZ1b,

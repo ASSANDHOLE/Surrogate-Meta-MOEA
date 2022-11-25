@@ -13,6 +13,7 @@ from DTLZ_problem import evaluate, get_pf, get_moea_data
 from benchmarking import benchmark_for_seeds
 from problem_config.example import get_args, get_network_structure, get_dataset, estimate_resource_usage
 from maml_mod import MamlWrapper
+from utils import NamedDict
 from visualization import visualize_loss, visualize_pf, visualize_igd
 
 
@@ -53,7 +54,7 @@ def test():
     visualize_loss(test_loss, random_loss)
 
 
-def main(print_progress=False, do_plot=False, do_train=True):
+def main(problem_name: str, print_progress=False, do_plot=False, do_train=True):
     args = get_args()
     n_var = args.problem_dim[0]
     n_objectives = args.problem_dim[1]
@@ -64,7 +65,6 @@ def main(print_progress=False, do_plot=False, do_train=True):
     moea_pop_size = 30
     proxy_n_gen = 50
     proxy_pop_size = 50
-    problem_name = 'DTLZ4c'
 
     network_structure = get_network_structure(args)
     # generate delta
@@ -75,7 +75,7 @@ def main(print_progress=False, do_plot=False, do_train=True):
     x[2] = sampling_lhs(n_samples=11 * n_var - 1, n_var=n_var, xl=0, xu=1)
     # sample 'arg.k_spt' from x[2]
     x[2] = x[2][np.random.choice(x[2].shape[0], args.k_spt, replace=False), :]
-    dataset, min_max = get_dataset(args, normalize_targets=True, delta=delta, problem_name=problem_name)
+    dataset, min_max = get_dataset(args, normalize_targets=True, delta=delta, problem_name=problem_name, pf_ratio=0)
     sol = MamlWrapper(dataset, args, network_structure)
     cprint('dataset init complete', do_print=print_progress)
     if do_train:
@@ -148,13 +148,8 @@ def main(print_progress=False, do_plot=False, do_train=True):
 
         history_f = np.vstack((history_f, y_true))
 
-        reshaped_history_f = []
-        for i in range(n_objectives):
-            reshaped_history_f.append(history_f[:, i])
-        reshaped_history_f = np.array(reshaped_history_f, dtype=np.float32)
-        reshaped_history_f = reshaped_history_f.reshape((*reshaped_history_f.shape, 1))
-
-        cont_loss = sol.test_continue(history_x, reshaped_history_f, return_single_loss=True)
+        cont_loss = sol.test_continue(history_x, history_f.T, return_single_loss=True)
+        # cont_loss = sol.test_continue(X, y_true.T, return_single_loss=True)
         cprint(f'continue loss: {cont_loss}', do_print=print_progress)
 
         # metric = IGD(pf_true, zero_to_one=True)
@@ -175,8 +170,9 @@ def main(print_progress=False, do_plot=False, do_train=True):
     # pf = evaluate(res.X, delta_finetune, n_objectives, min_max=min_max)
     cprint('Algorithm complete', do_print=print_progress)
     pf = history_f
+    moea_problem = NSGA2(pop_size=moea_pop_size, sampling=init_x)
     moea_pf, n_evals_moea, igd_moea = get_moea_data(n_var, n_objectives, delta_finetune,
-                                                    NSGA2(pop_size=moea_pop_size, sampling=init_x),
+                                                    moea_problem,
                                                     int(fn_eval_limit / moea_pop_size), metric, problem_name, min_max)
     n_evals_moea = np.insert(n_evals_moea, 0, 0)
     igd_moea = np.insert(igd_moea, 0, igd[0])
@@ -281,8 +277,13 @@ def fast_seed(seed: int) -> None:
 
 
 if __name__ == '__main__':
-    fast_seed(42)
+    fast_seed(20010808)
     # main()
     # main_NSGA_4c(do_plot=True, print_progress=True, do_train=False)
-    main(do_plot=True, print_progress=True, do_train=True)
+    problems = NamedDict({
+        'd1': 'DTLZ1b',
+        'd4': 'DTLZ4c',
+        'd7': 'DTLZ7b',
+    })
+    main(problems.d7, do_plot=True, print_progress=True, do_train=True)
     # main_benchmark()
