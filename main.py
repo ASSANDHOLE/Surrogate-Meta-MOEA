@@ -13,7 +13,7 @@ from DTLZ_problem import evaluate, get_pf, get_moea_data
 from benchmarking import benchmark_for_seeds
 from problem_config.example import get_args, get_network_structure, get_dataset, estimate_resource_usage
 from maml_mod import MamlWrapper
-from utils import NamedDict
+from utils import NamedDict, set_ipython_exception_hook
 from visualization import visualize_loss, visualize_pf, visualize_igd
 
 
@@ -277,6 +277,7 @@ def fast_seed(seed: int) -> None:
 
 
 if __name__ == '__main__':
+    set_ipython_exception_hook()
     fast_seed(20010808)
     # main()
     # main_NSGA_4c(do_plot=True, print_progress=True, do_train=False)
