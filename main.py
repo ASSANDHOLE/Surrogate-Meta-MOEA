@@ -1,7 +1,10 @@
 # Unified MAML for this project
 from __future__ import annotations
 
+import random
+
 import numpy as np
+import torch
 from matplotlib import pyplot as plt
 from pymoo.algorithms.moo.nsga2 import NSGA2
 from pymoo.indicators.igd import IGD
@@ -13,7 +16,7 @@ from DTLZ_problem import evaluate, get_pf, get_moea_data
 from benchmarking import benchmark_for_seeds
 from problem_config.example import get_args, get_network_structure, get_dataset, estimate_resource_usage
 from maml_mod import MamlWrapper
-from utils import NamedDict
+from utils import NamedDict, set_ipython_exception_hook
 from visualization import visualize_loss, visualize_pf, visualize_igd
 
 
@@ -54,8 +57,10 @@ def test():
     visualize_loss(test_loss, random_loss)
 
 
-def main(problem_name: str, print_progress=False, do_plot=False, do_train=True):
+def main(problem_name: str, print_progress=False, do_plot=False, do_train=True, gpu_id: int | None = None):
     args = get_args()
+    if gpu_id is not None:
+        args.device = torch.device(f'cuda:{gpu_id}')
     n_var = args.problem_dim[0]
     n_objectives = args.problem_dim[1]
     igd = []
@@ -242,23 +247,31 @@ def usage_check(n_proc: int):
     print('if the estimated usage is too large, you may cause system crash, try to reduce the number of processes')
 
 
-def main_benchmark():
+def main_benchmark(problem_name: str):
     _seeds = 20
     _n_proc = 1
     init_seed = 42
+    _estimate_gram = 2.6
     usage_check(_n_proc)
+    gpu_ids = [0]
     _res = benchmark_for_seeds(main,
                                post_mean_std,
                                seeds=_seeds,
+                               func_args=[problem_name],
                                func_kwargs={'print_progress': False, 'do_train': True},
                                n_proc=_n_proc,
+                               gpu_ids=gpu_ids,
+                               estimated_gram=_estimate_gram,
                                init_seed=init_seed)
     print(f'MAML Trained IGD: {_res[0]} +- {_res[1]}')
     _res = benchmark_for_seeds(main,
                                post_mean_std,
                                seeds=_seeds,
+                               func_args=[problem_name],
                                func_kwargs={'print_progress': False, 'do_train': False},
                                n_proc=_n_proc,
+                               gpu_ids=gpu_ids,
+                               estimated_gram=_estimate_gram,
                                init_seed=init_seed)
     print(f'NON-Trained  IGD: {_res[0]} +- {_res[1]}')
 
@@ -277,7 +290,8 @@ def fast_seed(seed: int) -> None:
 
 
 if __name__ == '__main__':
-    fast_seed(20010808)
+    # set_ipython_exception_hook()
+    # fast_seed(20010808)
     # main()
     # main_NSGA_4c(do_plot=True, print_progress=True, do_train=False)
     problems = NamedDict({
@@ -285,5 +299,5 @@ if __name__ == '__main__':
         'd4': 'DTLZ4c',
         'd7': 'DTLZ7b',
     })
-    main(problems.d7, do_plot=True, print_progress=True, do_train=True)
-    # main_benchmark()
+    # main(problems.d7, do_plot=True, print_progress=True, do_train=True)
+    main_benchmark(problems.d7)

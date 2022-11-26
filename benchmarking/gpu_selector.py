@@ -24,6 +24,8 @@ class GpuSelector:
         """
         Check if the gpu has enough ram
         """
+        if len(self.tasks[gpu_id]) == 0:
+            return True
         pynvml.nvmlInit()
         info = pynvml.nvmlDeviceGetMemoryInfo(self.devs[gpu_id])
         return info.free / 1024 ** 3 > estimate_ram

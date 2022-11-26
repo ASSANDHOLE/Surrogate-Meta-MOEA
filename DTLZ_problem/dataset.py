@@ -11,6 +11,7 @@ from pymoo.algorithms.moo.nsga3 import NSGA3
 try:
     from .problem import get_custom_problem
 except ImportError:
+    # for testing
     from problem import get_custom_problem
 
 
