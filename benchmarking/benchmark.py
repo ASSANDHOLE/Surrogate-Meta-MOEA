@@ -5,7 +5,7 @@ import time
 import warnings
 from typing import Callable, List, Any, Literal
 from multiprocessing import Pool, set_start_method, get_start_method
-from benchmarking import GpuManager
+from .gpu_selector import GpuManager
 
 
 def _multi_processing_wrapper(data: tuple) -> Any:
