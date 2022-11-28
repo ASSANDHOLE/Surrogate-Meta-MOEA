@@ -4,7 +4,7 @@ import random
 import time
 import warnings
 from typing import Callable, List, Any, Literal
-from multiprocessing import Pool, set_start_method, get_start_method
+from multiprocessing import Pool, set_start_method, get_start_method, Manager
 from .gpu_selector import GpuManager
 
 
@@ -22,7 +22,8 @@ def _multi_processing_wrapper(data: tuple) -> Any:
         3. The keyword arguments of the function
         4. The seed to be used
         5. The availability of the libraries
-        6. Optional: The GPU manager
+        6. Optional: The GPU selector
+        7. Optional: The lock for GPU selection
         The rest will be ignored
 
     Returns
@@ -33,7 +34,7 @@ def _multi_processing_wrapper(data: tuple) -> Any:
     func, args, kwargs, seed, availabilities, *_ = data
     gpu_manager = None
     if len(data) > 5:
-        gpu_manager = data[5]
+        gpu_manager, lock = data[5], data[6]
     if availabilities['numpy']:
         import numpy as np
         np.random.seed(seed)
@@ -51,7 +52,7 @@ def _multi_processing_wrapper(data: tuple) -> Any:
     if gpu_manager is not None:
         while gpu_id < 0:
             try:
-                gpu_id = gpu_manager.get_gpu()
+                gpu_id = gpu_manager.get_gpu(lock=lock)
             except RuntimeError:
                 time.sleep(1)
         kwargs['gpu_id'] = gpu_id
@@ -61,7 +62,7 @@ def _multi_processing_wrapper(data: tuple) -> Any:
         print(f'Error in {seed=}: {e}', flush=True)
         ret = None
     if gpu_manager is not None:
-        gpu_manager.return_gpu(gpu_id)
+        gpu_manager.return_gpu(gpu_id, lock=lock)
 
     print(f'{seed=} finished')
 
@@ -180,13 +181,15 @@ def benchmark_for_seeds(func: Callable,
         with GpuManager() as man:
             if gpu_ids is not None:
                 gpu_sel = man.GpuSelector(len(gpu_ids), gpu_ids, estimated_gram)
-            with Pool(n_proc, maxtasksperchild=1) as pool:
-                results = pool.map(_multi_processing_wrapper, [
-                    (func, func_args, func_kwargs, seed, availabilities)
-                    if gpu_ids is None else
-                    (func, func_args, func_kwargs, seed, availabilities, gpu_sel)
-                    for seed in seeds
-                ])
+            with Manager() as lock_man:
+                lock = lock_man.Lock()
+                with Pool(n_proc, maxtasksperchild=1) as pool:
+                    results = pool.map(_multi_processing_wrapper, [
+                        (func, func_args, func_kwargs, seed, availabilities)
+                        if gpu_ids is None else
+                        (func, func_args, func_kwargs, seed, availabilities, gpu_sel, lock)
+                        for seed in seeds
+                    ])
     else:
         for seed in seeds:
             results.append(_multi_processing_wrapper((func, func_args, func_kwargs, seed, availabilities)))
