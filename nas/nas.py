@@ -2,7 +2,7 @@ import os
 import pickle
 import sys
 import time
-from multiprocessing import Pool, Lock
+from multiprocessing import Pool
 from multiprocessing import Manager as LockManager
 from typing import List
 
@@ -11,7 +11,7 @@ sys.path.append('..')
 import random
 import torch
 
-from gpu_selector import GpuManager, GpuSelector
+from benchmarking import GpuManager
 
 import numpy as np
 from pymoo.indicators.igd import IGD

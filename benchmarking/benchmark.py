@@ -1,9 +1,11 @@
 import gc
 import os
 import random
+import time
 import warnings
 from typing import Callable, List, Any, Literal
 from multiprocessing import Pool, set_start_method, get_start_method
+from benchmarking import GpuManager
 
 
 def _multi_processing_wrapper(data: tuple) -> Any:
@@ -20,6 +22,7 @@ def _multi_processing_wrapper(data: tuple) -> Any:
         3. The keyword arguments of the function
         4. The seed to be used
         5. The availability of the libraries
+        6. Optional: The GPU manager
         The rest will be ignored
 
     Returns
@@ -28,6 +31,9 @@ def _multi_processing_wrapper(data: tuple) -> Any:
         The result of the function
     """
     func, args, kwargs, seed, availabilities, *_ = data
+    gpu_manager = None
+    if len(data) > 5:
+        gpu_manager = data[5]
     if availabilities['numpy']:
         import numpy as np
         np.random.seed(seed)
@@ -41,12 +47,21 @@ def _multi_processing_wrapper(data: tuple) -> Any:
         import tensorflow as tf
         tf.random.set_seed(seed)
     print(f'{seed=}')
-
+    gpu_id = -1
+    if gpu_manager is not None:
+        while gpu_id < 0:
+            try:
+                gpu_id = gpu_manager.get_gpu()
+            except RuntimeError:
+                time.sleep(1)
+        kwargs['gpu_id'] = gpu_id
     try:
         ret = func(*args, **kwargs)
     except Exception as e:
         print(f'Error in {seed=}: {e}', flush=True)
         ret = None
+    if gpu_manager is not None:
+        gpu_manager.return_gpu(gpu_id)
 
     print(f'{seed=} finished')
 
@@ -69,6 +84,8 @@ def benchmark_for_seeds(func: Callable,
                         post_process_args: List[Any] = None,
                         post_process_kwargs: dict | None = None,
                         n_proc: int = 1,
+                        gpu_ids: List[int] | None = None,
+                        estimated_gram: float | None = None,
                         new_proc_method: Literal['fork', 'spawn'] = 'spawn',
                         init_seed: int = 42) -> Any:
     """
@@ -95,6 +112,10 @@ def benchmark_for_seeds(func: Callable,
         If n_proc <= 0, then the number of processes will be set to the number of available CPUs
         If n_proc == 1, then the multiprocessing will be disabled, useful if function cannot be pickled
         If n_proc > 1, then the multiprocessing will be enabled for `n_proc` processes
+    gpu_ids : List[int] | None
+        The ids of the GPUs to be used
+    estimated_gram : float | None
+        The estimated GPU RAM usage of the function
     new_proc_method : Literal['fork', 'spawn']
         The method to be used to create new processes,
         'fork' only works on Unix-like systems, while 'spawn' works on all platforms
@@ -156,11 +177,16 @@ def benchmark_for_seeds(func: Callable,
             n_proc = 1
     results = []
     if n_proc > 1:
-        with Pool(n_proc, maxtasksperchild=1) as pool:
-            results = pool.map(_multi_processing_wrapper, [
-                (func, func_args, func_kwargs, seed, availabilities)
-                for seed in seeds
-            ])
+        with GpuManager() as man:
+            if gpu_ids is not None:
+                gpu_sel = man.GpuSelector(len(gpu_ids), gpu_ids, estimated_gram)
+            with Pool(n_proc, maxtasksperchild=1) as pool:
+                results = pool.map(_multi_processing_wrapper, [
+                    (func, func_args, func_kwargs, seed, availabilities)
+                    if gpu_ids is None else
+                    (func, func_args, func_kwargs, seed, availabilities, gpu_sel)
+                    for seed in seeds
+                ])
     else:
         for seed in seeds:
             results.append(_multi_processing_wrapper((func, func_args, func_kwargs, seed, availabilities)))
