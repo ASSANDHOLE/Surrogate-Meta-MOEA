@@ -13,9 +13,9 @@ def get_args():
     args = NamedDict()
     args.problem_dim = (10, 3)
     args.train_test = (300, 1)
-    args.epoch = 50
-    args.sgd_epoch = 50
-    args.sgd_select_n = 50
+    args.epoch = 10
+    args.sgd_epoch = 10
+    args.sgd_select_n = 100
     args.update_lr = 0.0025
     args.meta_lr = 0.001
     args.fine_tune_lr = 0.005
