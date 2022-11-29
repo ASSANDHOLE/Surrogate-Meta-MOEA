@@ -249,11 +249,11 @@ def usage_check(n_proc: int):
 
 def main_benchmark(problem_name: str):
     _seeds = 20
-    _n_proc = 1
+    _n_proc = 20
     init_seed = 42
-    _estimate_gram = 2.6
+    _estimate_gram = 3.5
     usage_check(_n_proc)
-    gpu_ids = [0]
+    gpu_ids = [0, 1, 2, 3, 4, 5, 6, 7]
     _res = benchmark_for_seeds(main,
                                post_mean_std,
                                seeds=_seeds,
@@ -300,4 +300,4 @@ if __name__ == '__main__':
         'd7': 'DTLZ7b',
     })
     # main(problems.d7, do_plot=True, print_progress=True, do_train=True)
-    main_benchmark(problems.d7)
+    main_benchmark(problems.d1)

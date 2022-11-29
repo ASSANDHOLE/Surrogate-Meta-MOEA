@@ -32,10 +32,10 @@ def set_ipython_exception_hook():
     sys.excepthook = _IPythonExceptionHook()
 
 
-def test():
+def test(_n, _m):
     import numpy as np
-    tot = 900
-    each = 50
+    tot = _n
+    each = _m
     tot_arr = np.arange(tot, dtype=np.int32)
     sel = np.zeros_like(tot_arr, dtype=bool)
     i = 0
@@ -84,7 +84,7 @@ def draw_curve(n, m):
     import matplotlib.pyplot as plt
     k = list(range(10, 200))
     y = [((n ** ki - (n - m) ** ki) / n ** ki) ** n for ki in k]
-    arr = [test() for _ in range(2000)]
+    arr = [test(n, m) for _ in range(2000)]
     plt.hist(arr, bins=50, density=True)
     div = np.diff(y) / np.diff(k)
     div = np.concatenate(([div[0]], div))
@@ -94,7 +94,7 @@ def draw_curve(n, m):
 
 
 if __name__ == '__main__':
-    _n, _m = 900, 50
-    draw_curve(_n, _m)
+    _n, _m = 900, 100
+    # draw_curve(_n, _m)
     v = calculate_confidence_k(_n, _m)
     print(v)
