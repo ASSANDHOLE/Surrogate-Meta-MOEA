@@ -172,5 +172,7 @@ class MamlWrapper:
         if self.nets is None or self.fast_weights is None:
             raise ValueError('No previous fine-tuned model found, please use `test` instead')
         x = torch.from_numpy(x).to(self.device)
-        return [net(x, self.fast_weights[i]).detach().cpu().numpy().flatten()[0] for i, net in enumerate(self.nets)]
+        ret = [net(x, self.fast_weights[i]).detach().cpu().numpy().flatten() for i, net in enumerate(self.nets)]
+        ret = np.array(ret).flatten()
+        return ret
 

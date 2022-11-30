@@ -11,11 +11,12 @@ from utils import NamedDict
 
 def get_args():
     args = NamedDict()
+    args.dim = 1
     args.problem_dim = (10, 3)
     args.train_test = (300, 1)
     args.epoch = 10
     args.sgd_epoch = 10
-    args.sgd_select_n = 100
+    args.sgd_select_n = 50
     args.update_lr = 0.0025
     args.meta_lr = 0.001
     args.fine_tune_lr = 0.005
@@ -30,6 +31,9 @@ def get_args():
 
 def get_network_structure(args):
     n_args = args.problem_dim[0]
+    n_args_out = args.problem_dim[1]
+    if 'dim' in args:
+        n_args_out = int(n_args_out ** args.dim)
     config = [
         # ('linear', [2 * n_args, n_args]),
         # ('relu', [True]),
@@ -48,7 +52,7 @@ def get_network_structure(args):
         ('relu', [True]),
         ('linear', [100, 200]),
         ('relu', [True]),
-        ('linear', [1, 100]),
+        ('linear', [n_args_out, 100]),
     ]
     return config
 

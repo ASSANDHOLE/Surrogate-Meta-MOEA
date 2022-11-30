@@ -71,6 +71,7 @@ def create_dataset_inner_1d(x, n_dim: Tuple[int, int], delta: Tuple[List[int | f
         problem = get_custom_problem(name=problem_name, n_var=n_var, n_obj=n_obj, delta1=delta1[i], delta2=delta2[i])
         y.extend([problem.evaluate(x[i])])
     y = np.array(y).astype(np.float32)
+    x = np.array(x).astype(np.float32)
     return x, y
 
 
