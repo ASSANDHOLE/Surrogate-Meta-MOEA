@@ -59,15 +59,16 @@ def test():
 
 def main(problem_name: str, print_progress=False, do_plot=False, do_train=True, gpu_id: int | None = None):
     args = get_args()
+    dim = args.dim if 'dim' in args else 1
     if gpu_id is not None:
         args.device = torch.device(f'cuda:{gpu_id}')
     n_var = args.problem_dim[0]
     n_objectives = args.problem_dim[1]
     igd = []
     fn_eval = args.k_spt
-    fn_eval_limit = 200 - 2
+    fn_eval_limit = 300 + 2
     max_pts_num = 10
-    moea_pop_size = 30
+    moea_pop_size = 50
     proxy_n_gen = 50
     proxy_pop_size = 50
 
@@ -80,7 +81,14 @@ def main(problem_name: str, print_progress=False, do_plot=False, do_train=True, 
     x[2] = sampling_lhs(n_samples=11 * n_var - 1, n_var=n_var, xl=0, xu=1)
     # sample 'arg.k_spt' from x[2]
     x[2] = x[2][np.random.choice(x[2].shape[0], args.k_spt, replace=False), :]
-    dataset, min_max = get_dataset(args, normalize_targets=True, delta=delta, problem_name=problem_name, pf_ratio=0)
+    dataset, min_max = get_dataset(
+        args,
+        normalize_targets=True,
+        delta=delta,
+        problem_name=problem_name,
+        pf_ratio=0,
+        dim=dim
+    )
     sol = MamlWrapper(dataset, args, network_structure)
     cprint('dataset init complete', do_print=print_progress)
     if do_train:
@@ -121,7 +129,7 @@ def main(problem_name: str, print_progress=False, do_plot=False, do_train=True, 
 
     cprint('Algorithm init complete', do_print=print_progress)
 
-    plot_int = 30
+    plot_int = 38
     plotted = 1
 
     while fn_eval < fn_eval_limit:
@@ -153,7 +161,7 @@ def main(problem_name: str, print_progress=False, do_plot=False, do_train=True, 
 
         history_f = np.vstack((history_f, y_true))
 
-        cont_loss = sol.test_continue(history_x, history_f.T, return_single_loss=True)
+        cont_loss = sol.test_continue(history_x, history_f, return_single_loss=True)
         # cont_loss = sol.test_continue(X, y_true.T, return_single_loss=True)
         cprint(f'continue loss: {cont_loss}', do_print=print_progress)
 
@@ -178,7 +186,10 @@ def main(problem_name: str, print_progress=False, do_plot=False, do_train=True, 
     moea_problem = NSGA2(pop_size=moea_pop_size, sampling=init_x)
     moea_pf, n_evals_moea, igd_moea = get_moea_data(n_var, n_objectives, delta_finetune,
                                                     moea_problem,
-                                                    int(fn_eval_limit / moea_pop_size), metric, problem_name, min_max)
+                                                    int(fn_eval_limit / moea_pop_size),
+                                                    metric,
+                                                    problem_name,
+                                                    min_max)
     n_evals_moea = np.insert(n_evals_moea, 0, 0)
     igd_moea = np.insert(igd_moea, 0, igd[0])
     cprint('MOEA Baseline complete', do_print=print_progress)
@@ -291,7 +302,7 @@ def fast_seed(seed: int) -> None:
 
 if __name__ == '__main__':
     # set_ipython_exception_hook()
-    # fast_seed(20010808)
+    fast_seed(20010921)
     # main()
     # main_NSGA_4c(do_plot=True, print_progress=True, do_train=False)
     problems = NamedDict({
@@ -299,5 +310,5 @@ if __name__ == '__main__':
         'd4': 'DTLZ4c',
         'd7': 'DTLZ7b',
     })
-    # main(problems.d7, do_plot=True, print_progress=True, do_train=True)
-    main_benchmark(problems.d1)
+    main(problems.d7, do_plot=True, print_progress=True, do_train=True)
+    # main_benchmark(problems.d1)
