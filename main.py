@@ -27,38 +27,6 @@ def cprint(*args, do_print=True, **kwargs):
         print(*args, **kwargs)
 
 
-def test():
-    # see Sol.__init__ for more information
-    args = get_args()
-    network_structure = get_network_structure(args)
-    dataset, _ = get_dataset(args, normalize_targets=True, problem_name='DTLZ4c')
-    sol = MamlWrapper(dataset, args, network_structure)
-    # train_loss = sol.train(explicit=1)
-    test_loss = sol.test(return_single_loss=False)
-    mean_test_loss = np.mean(test_loss, axis=0)
-    print(f'Test loss: {mean_test_loss[-1]:.4f}')
-    x_test = dataset[1][2][1]
-    y_true = dataset[1][3][1]
-    y_pred = [sol(x)[1] for x in x_test]
-    print(y_true[:10])
-    print(y_pred[:10])
-    x_test = np.array([i * 0.09 for i in range(1, 1 + 10)], np.float32)
-    y_pred = sol(x_test)
-    y_true = [y + 1 for y in y_pred]  # add some noise for testing
-    sol.test_continue(x_test, np.array(y_true, np.float32).reshape((3, 1)))
-    y_pred_1 = sol(x_test)
-    print(f'Prediction: {y_pred}')
-    print(f'Prediction after continue: {y_pred_1}')
-
-    # args.update_step_test = int(1.5 * args.update_step_test)
-    sol = MamlWrapper(dataset, args, network_structure)
-    random_loss = sol.test(pretrain=True, return_single_loss=False)
-    mean_random_loss = np.mean(random_loss, axis=0)
-    print(f'Random loss: {mean_random_loss[-1]:.4f}')
-
-    visualize_loss(test_loss, random_loss)
-
-
 def main(problem_name: str, print_progress=False, do_plot=False, do_train=True, gpu_id: int | None = None):
     args = get_args()
     dim = args.dim if 'dim' in args else 1
@@ -69,7 +37,7 @@ def main(problem_name: str, print_progress=False, do_plot=False, do_train=True, 
     igd = []
     fn_eval = args.k_spt
     fn_eval_limit = 300 + 2
-    max_pts_num = 10
+    max_pts_num = 5
     moea_pop_size = 50
     proxy_n_gen = 50
     proxy_pop_size = 50

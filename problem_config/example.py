@@ -19,7 +19,7 @@ def get_args():
     args.sgd_select_n = 50
     args.update_lr = 0.0025
     args.meta_lr = 0.001
-    args.fine_tune_lr = 0.0002
+    args.fine_tune_lr = 0.01
     args.k_spt = 30
     args.k_qry = 200
     args.update_step = 10
