@@ -19,7 +19,7 @@ def get_args():
     args.sgd_select_n = 50
     args.update_lr = 0.0025
     args.meta_lr = 0.001
-    args.fine_tune_lr = 0.005
+    args.fine_tune_lr = 0.0002
     args.k_spt = 30
     args.k_qry = 200
     args.update_step = 10
@@ -47,6 +47,8 @@ def get_network_structure(args):
         ('linear', [100, n_args]),
         ('relu', [True]),
         ('linear', [200, 100]),
+        ('relu', [True]),
+        ('linear', [200, 200]),
         ('relu', [True]),
         ('linear', [200, 200]),
         ('relu', [True]),

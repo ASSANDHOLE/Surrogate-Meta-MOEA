@@ -7,9 +7,11 @@ import numpy as np
 import torch
 from matplotlib import pyplot as plt
 from pymoo.algorithms.moo.nsga2 import NSGA2
+from pymoo.algorithms.moo.rvea import RVEA
 from pymoo.indicators.igd import IGD
 from pymoo.operators.sampling.lhs import sampling_lhs
 from pymoo.optimize import minimize
+from pymoo.util.ref_dirs import get_reference_directions
 
 from DTLZ_problem import DTLZbProblem, get_custom_problem
 from DTLZ_problem import evaluate, get_pf, get_moea_data
@@ -134,7 +136,9 @@ def main(problem_name: str, print_progress=False, do_plot=False, do_train=True, 
 
     while fn_eval < fn_eval_limit:
         cprint(f'fn_eval: {fn_eval}', do_print=print_progress)
-        algorithm_surrogate = NSGA2(pop_size=args.k_spt, sampling=history_x)
+        # algorithm_surrogate = NSGA2(pop_size=args.k_spt, sampling=history_x)
+        ref_dirs = get_reference_directions("das-dennis", 3, n_partitions=8)
+        algorithm_surrogate = RVEA(pop_size=proxy_pop_size, sampling=history_x, ref_dirs=ref_dirs)
         problem_surrogate = DTLZbProblem(n_var=n_var, n_obj=n_objectives, sol=sol)
 
         res = minimize(problem_surrogate,
@@ -162,7 +166,7 @@ def main(problem_name: str, print_progress=False, do_plot=False, do_train=True, 
         history_f = np.vstack((history_f, y_true))
 
         cont_loss = sol.test_continue(history_x, history_f, return_single_loss=True)
-        # cont_loss = sol.test_continue(X, y_true.T, return_single_loss=True)
+        # cont_loss = sol.test_continue(train_x, train_y, return_single_loss=True)
         cprint(f'continue loss: {cont_loss}', do_print=print_progress)
 
         # metric = IGD(pf_true, zero_to_one=True)
@@ -183,7 +187,9 @@ def main(problem_name: str, print_progress=False, do_plot=False, do_train=True, 
     # pf = evaluate(res.X, delta_finetune, n_objectives, min_max=min_max)
     cprint('Algorithm complete', do_print=print_progress)
     pf = history_f
-    moea_problem = NSGA2(pop_size=moea_pop_size, sampling=init_x)
+    # moea_problem = NSGA2(pop_size=moea_pop_size, sampling=init_x)
+    ref_dirs = get_reference_directions("das-dennis", 3, n_partitions=8)
+    moea_problem = RVEA(pop_size=moea_pop_size, sampling=init_x, ref_dirs=ref_dirs)
     moea_pf, n_evals_moea, igd_moea = get_moea_data(n_var, n_objectives, delta_finetune,
                                                     moea_problem,
                                                     int(fn_eval_limit / moea_pop_size),
@@ -216,8 +222,8 @@ def main(problem_name: str, print_progress=False, do_plot=False, do_train=True, 
         visualize_igd(func_evals, igds, colors, labels)
         plt.show()
 
-    cprint(f'IGD of Proxy: {igd[-3:-1]}', do_print=print_progress)
-    cprint(f'IGD of MOEA:  {igd_moea[-3:-1]}', do_print=print_progress)
+    cprint(f'IGD of Proxy: {igd[-2:]}', do_print=print_progress)
+    cprint(f'IGD of MOEA:  {igd_moea[-2:]}', do_print=print_progress)
     # deallocate memory
     del sol
     return igd[-1]
@@ -310,5 +316,5 @@ if __name__ == '__main__':
         'd4': 'DTLZ4c',
         'd7': 'DTLZ7b',
     })
-    main(problems.d7, do_plot=True, print_progress=True, do_train=True)
+    main(problems.d4, do_plot=True, print_progress=True, do_train=True)
     # main_benchmark(problems.d1)

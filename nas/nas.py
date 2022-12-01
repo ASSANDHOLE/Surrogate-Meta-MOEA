@@ -5,6 +5,9 @@ import time
 from multiprocessing import Pool
 from multiprocessing import Manager as LockManager
 from typing import List
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
 sys.path.append('..')
 
@@ -299,5 +302,70 @@ def main():
         print(f'Pickle Dump Error: {e}')
 
 
+def single_model_run():
+    n_args = (10, 3)
+
+    class Net(nn.Module):
+        def __init__(self, s):
+            super(Net, self).__init__()
+            net = [
+                nn.Linear(n_args[0], s[0]),
+            ]
+            for i in range(len(s) - 1):
+                net.append(nn.ReLU())
+                net.append(nn.Linear(s[i], s[i + 1]))
+            net.append(nn.ReLU())
+            net.append(nn.Linear(s[-1], n_args[1]))
+            self.net = nn.Sequential(*net)
+
+        def forward(self, x):
+            return self.net(x)
+
+    net = Net([100, 200, 200, 200, 100])
+    args = get_args()
+    args.k_spt = 2000
+    args.k_qry = 2000
+    dataset, norm = get_dataset(args,
+                                normalize_targets=True,
+                                problem_name='DTLZ4c',
+                                pf_ratio=0,
+                                dim=1)
+    train_x, train_y, test_x, test_y = dataset[1]
+    dev = torch.device('cuda:0')
+
+    def remove_one_from_shape(x):
+        s = list(x.shape)
+        s = [ss for ss in s if ss != 1]
+        x = x.reshape(s)
+        return torch.from_numpy(x).float().to(dev)
+
+    train_x = remove_one_from_shape(train_x)
+    train_y = remove_one_from_shape(train_y)
+    test_x = remove_one_from_shape(test_x)
+    test_y = remove_one_from_shape(test_y)
+
+    net = net.to(dev)
+
+    # train
+    net.train()
+    optimizer = torch.optim.Adam(net.parameters(), lr=1e-3)
+    for i in range(207):
+        optimizer.zero_grad()
+        random_idx = np.random.choice(train_x.shape[0], 100)
+        x = train_x[random_idx]
+        y = train_y[random_idx]
+        y_pred = net(x)
+        loss = F.mse_loss(y_pred, y)
+        loss.backward()
+        optimizer.step()
+        print(f'Epoch {i}: {loss.item()}')
+
+    # test
+    net.eval()
+    y_pred = net(test_x)
+    loss = F.mse_loss(y_pred, test_y)
+    print(f'Test Loss: {loss.item()}')
+
+
 if __name__ == '__main__':
-    main()
+    single_model_run()

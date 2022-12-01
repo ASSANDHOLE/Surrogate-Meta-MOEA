@@ -94,7 +94,7 @@ def draw_curve(n, m):
 
 
 if __name__ == '__main__':
-    _n, _m = 300, 50
+    _n, _m = 2000, 100
     # draw_curve(_n, _m)
     v = calculate_confidence_k(_n, _m)
     print(v)
