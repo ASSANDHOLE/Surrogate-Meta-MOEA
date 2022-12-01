@@ -75,8 +75,16 @@ def create_dataset_inner_1d(x, n_dim: Tuple[int, int], delta: Tuple[List[int | f
     return x, y
 
 
-def create_dataset(problem_dim: Tuple[int, int], problem_name: str, x=None, n_problem=None, spt_qry=None, delta=None, 
-                   normalize_targets=True, dim: Literal[0, 1] = 0, pf_ratio: float = 0.5, **_) -> Tuple[
+def create_dataset(problem_dim: Tuple[int, int],
+                   problem_name: str,
+                   x=None,
+                   n_problem=None,
+                   spt_qry=None,
+                   delta=None,
+                   normalize_targets=True,
+                   dim: Literal[0, 1] = 0,
+                   pf_ratio: float = 0.5,
+                   **_) -> Tuple[
     Tuple[
         Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
         Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
@@ -101,6 +109,8 @@ def create_dataset(problem_dim: Tuple[int, int], problem_name: str, x=None, n_pr
         Whether to normalize the targets
     dim : int
         The dimension of the problem
+    pf_ratio : float
+        The ratio of the Pareto front to the whole dataset
 
     Returns
     -------
@@ -267,7 +277,12 @@ def get_pf(n_objectives: int, problem: Any,
     return pf
 
 
-def get_moea_data(n_var: int, n_objectives: int, delta: Tuple[int, int], algorithm: Any, n_gen: int, metric: Any, problem_name: str,
+def get_moea_data(n_var: int,
+                  n_objectives: int,
+                  delta: Tuple[int, int],
+                  algorithm: Any,
+                  n_eval: int,
+                  metric: Any, problem_name: str,
                   min_max: Tuple[float | None, float | None]) -> Tuple[
     np.ndarray, list, list
 ]:
@@ -282,8 +297,8 @@ def get_moea_data(n_var: int, n_objectives: int, delta: Tuple[int, int], algorit
         The delta1 and delta2
     algorithm: 
         MOEA algorithm
-    n_gen: int
-        number of generation
+    n_eval: int
+        number of function evaluations
     metric:
         The metric to calculate the IGD
     problem_name : str
@@ -301,7 +316,7 @@ def get_moea_data(n_var: int, n_objectives: int, delta: Tuple[int, int], algorit
     problem = get_custom_problem(name=problem_name, n_var=n_var, n_obj=n_objectives, delta1=delta[0], delta2=delta[1])  # change delta here
     res = minimize(problem,
                    algorithm,
-                   termination=('n_gen', n_gen),
+                   termination=('n_eval', n_eval),
                    save_history=True,
                    verbose=False)
     moea_pf = res.F

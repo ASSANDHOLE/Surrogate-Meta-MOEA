@@ -27,7 +27,19 @@ def cprint(*args, do_print=True, **kwargs):
         print(*args, **kwargs)
 
 
-def main(problem_name: str, print_progress=False, do_plot=False, do_train=True, gpu_id: int | None = None):
+def main(problem_name: str,
+         print_progress=False,
+         do_plot=False,
+         do_train=True,
+         gpu_id: int | None = None,
+         return_none_train_igd=False,
+         additional_data: dict | None = None):
+
+    if return_none_train_igd:
+        print_progress = False
+        do_plot = False
+        do_train = False
+
     args = get_args()
     dim = args.dim if 'dim' in args else 1
     if gpu_id is not None:
@@ -37,28 +49,35 @@ def main(problem_name: str, print_progress=False, do_plot=False, do_train=True, 
     igd = []
     fn_eval = args.k_spt
     fn_eval_limit = 300 + 2
-    max_pts_num = 5
+    max_pts_num = 20
     moea_pop_size = 50
-    proxy_n_gen = 50
-    proxy_pop_size = 50
+    proxy_n_gen = 100
+    proxy_pop_size = 100
 
     network_structure = get_network_structure(args)
     # generate delta
-    delta = []
-    for i in range(2):
-        delta.append([np.random.rand(args.train_test[i])*8, np.random.rand(args.train_test[i])*8])
-    x = [None, None, None, None]
-    x[2] = sampling_lhs(n_samples=11 * n_var - 1, n_var=n_var, xl=0, xu=1)
-    # sample 'arg.k_spt' from x[2]
-    x[2] = x[2][np.random.choice(x[2].shape[0], args.k_spt, replace=False), :]
-    dataset, min_max = get_dataset(
-        args,
-        normalize_targets=True,
-        delta=delta,
-        problem_name=problem_name,
-        pf_ratio=0,
-        dim=dim
-    )
+    if additional_data is None:
+        delta = []
+        for i in range(2):
+            delta.append([np.random.rand(args.train_test[i]) * 20, np.random.rand(args.train_test[i]) * 20])
+        x = [None, None, None, None]
+        x[2] = sampling_lhs(n_samples=11 * n_var - 1, n_var=n_var, xl=0, xu=1)
+        # sample 'arg.k_spt' from x[2]
+        x[2] = x[2][np.random.choice(x[2].shape[0], args.k_spt, replace=False), :]
+        dataset, min_max = get_dataset(
+            args,
+            normalize_targets=True,
+            delta=delta,
+            problem_name=problem_name,
+            pf_ratio=0.5,
+            dim=dim
+        )
+    else:
+        delta = additional_data['delta']
+        x = additional_data['x']
+        dataset = additional_data['dataset']
+        min_max = additional_data['min_max']
+
     sol = MamlWrapper(dataset, args, network_structure)
     cprint('dataset init complete', do_print=print_progress)
     if do_train:
@@ -74,7 +93,10 @@ def main(problem_name: str, print_progress=False, do_plot=False, do_train=True, 
     problem = get_custom_problem(name=problem_name, n_var=n_var, n_obj=n_objectives, delta1=delta_finetune[0],
                                  delta2=delta_finetune[1])
 
-    pf_true = get_pf(n_objectives, problem, min_max)
+    if additional_data is None:
+        pf_true = get_pf(n_objectives, problem, min_max)
+    else:
+        pf_true = additional_data['pf_true']
 
     res = minimize(problem=problem,
                    algorithm=NSGA2(pop_size=proxy_pop_size, sampling=init_x),
@@ -83,8 +105,9 @@ def main(problem_name: str, print_progress=False, do_plot=False, do_train=True, 
     history_x, history_f = res.X, res.F
     history_x = history_x.astype(np.float32)
     history_f = history_f.astype(np.float32)
-    history_f -= min_max[0]
-    history_f /= min_max[1]
+    if min_max[0] is not None:
+        history_f -= min_max[0]
+        history_f /= min_max[1]
 
     metric = IGD(pf_true, zero_to_one=True)
     igd.append(metric.do(history_f))
@@ -133,8 +156,9 @@ def main(problem_name: str, print_progress=False, do_plot=False, do_train=True, 
 
         history_f = np.vstack((history_f, y_true))
 
-        cont_loss = sol.test_continue(history_x, history_f, return_single_loss=True)
-        # cont_loss = sol.test_continue(train_x, train_y, return_single_loss=True)
+        for _ in range(5):
+            cont_loss = sol.test_continue(history_x, history_f, return_single_loss=True)
+            # cont_loss = sol.test_continue(train_x, train_y, return_single_loss=True)
         cprint(f'continue loss: {cont_loss}', do_print=print_progress)
 
         # metric = IGD(pf_true, zero_to_one=True)
@@ -153,6 +177,8 @@ def main(problem_name: str, print_progress=False, do_plot=False, do_train=True, 
                          scale=scale, pf_true=pf_true, show=True)
 
     # pf = evaluate(res.X, delta_finetune, n_objectives, min_max=min_max)
+    if return_none_train_igd:
+        return func_eval_igd, igd
     cprint('Algorithm complete', do_print=print_progress)
     pf = history_f
     # moea_problem = NSGA2(pop_size=moea_pop_size, sampling=init_x)
@@ -160,7 +186,7 @@ def main(problem_name: str, print_progress=False, do_plot=False, do_train=True, 
     moea_problem = RVEA(pop_size=moea_pop_size, sampling=init_x, ref_dirs=ref_dirs)
     moea_pf, n_evals_moea, igd_moea = get_moea_data(n_var, n_objectives, delta_finetune,
                                                     moea_problem,
-                                                    int(fn_eval_limit / moea_pop_size),
+                                                    fn_eval_limit,
                                                     metric,
                                                     problem_name,
                                                     min_max)
@@ -182,11 +208,20 @@ def main(problem_name: str, print_progress=False, do_plot=False, do_train=True, 
             scale.append(data)
         visualize_pf(pf=moea_pf, label='NSGA-II PF', color='blue', scale=scale, pf_true=pf_true)
 
-    func_evals = [func_eval_igd, n_evals_moea, func_eval_igd]
-    igds = [igd, igd_moea, Y_igd]
-    colors = ['black', 'blue', 'green']
-    labels = ['Our Surrogate Model', 'NSGA-II', 'Test']
-    if do_plot:
+        additional_data = {
+            'delta': delta,
+            'x': x,
+            'dataset': dataset,
+            'min_max': min_max,
+            'pf_true': pf_true,
+        }
+        nt_func_eval_igd, nt_igd = main(problem_name, return_none_train_igd=True, additional_data=additional_data)
+
+        func_evals = [func_eval_igd, n_evals_moea, func_eval_igd, nt_func_eval_igd]
+        igds = [igd, igd_moea, Y_igd, nt_igd]
+        colors = ['black', 'blue', 'green', 'orange']
+        labels = ['Our Algorithm with Meta', 'MOEA', 'Surrogate IGD per update', 'Our Algorithm without Meta']
+
         visualize_igd(func_evals, igds, colors, labels)
         plt.show()
 
@@ -195,6 +230,114 @@ def main(problem_name: str, print_progress=False, do_plot=False, do_train=True, 
     # deallocate memory
     del sol
     return igd[-1]
+
+
+def train_with_moea_data(problem_name: str):
+    args = get_args()
+    dim = args.dim if 'dim' in args else 1
+    n_var = args.problem_dim[0]
+    n_objectives = args.problem_dim[1]
+    igd = []
+    fn_eval = args.k_spt
+    fn_eval_limit = 300 + 2
+    max_pts_num = 5
+    moea_pop_size = 50
+    proxy_n_gen = 50
+    proxy_pop_size = 50
+
+    network_structure = get_network_structure(args)
+    # generate delta
+    delta = []
+    for i in range(2):
+        delta.append([np.random.rand(args.train_test[i]) * 8, np.random.rand(args.train_test[i]) * 8])
+    x = [None, None, None, None]
+    x[2] = sampling_lhs(n_samples=11 * n_var - 1, n_var=n_var, xl=0, xu=1)
+    # sample 'arg.k_spt' from x[2]
+    x[2] = x[2][np.random.choice(x[2].shape[0], args.k_spt, replace=False), :]
+    dataset, min_max = get_dataset(
+        args,
+        normalize_targets=True,
+        delta=delta,
+        problem_name=problem_name,
+        pf_ratio=0,
+        dim=dim
+    )
+    sol = MamlWrapper(dataset, args, network_structure)
+    cprint('dataset init complete', do_print=True)
+    train_loss = sol.train(explicit=2)
+    print(train_loss[-1])
+    test_loss = sol.test(return_single_loss=False)
+    delta_finetune = np.array(delta[1])[:, -1]
+    init_x = dataset[1][0][0]  # test spt set (100, 8)
+    problem = get_custom_problem(name=problem_name, n_var=n_var, n_obj=n_objectives, delta1=delta_finetune[0],
+                                 delta2=delta_finetune[1])
+    pf_true = get_pf(n_objectives, problem, min_max)
+    ref_dirs = get_reference_directions("das-dennis", 3, n_partitions=8)
+    moea_problem = RVEA(pop_size=moea_pop_size, sampling=init_x, ref_dirs=ref_dirs)
+    res = minimize(problem, moea_problem, save_history=True, termination=('n_eval', fn_eval_limit), seed=None, verbose=True)
+    hist = res.history
+    hist_F, n_evals = [], []
+    hist_X = []
+    for algo in hist:
+        n_evals.append(algo.evaluator.n_eval)
+        opt = algo.opt
+        # feas = np.where(opt.get("feasible"))[0]
+        # hist_F.append(opt.get("F")[feas])
+        feas_pop = np.where(algo.pop.get("feasible"))[0]
+        feas_off = np.where(algo.off.get("feasible"))[0]
+        hist_F.append(np.concatenate([algo.pop.get("F")[feas_pop], algo.off.get("F")[feas_off]], axis=0))
+        hist_X.append(np.concatenate([algo.pop.get("X")[feas_pop], algo.off.get("X")[feas_off]], axis=0))
+        if len(hist_F) > 1:
+            hist_F[-1] = np.unique(np.concatenate([hist_F[-2], hist_F[-1]], axis=0), axis=0)
+        if len(hist_X) > 1:
+            hist_X[-1] = np.unique(np.concatenate([hist_X[-2], hist_X[-1]], axis=0), axis=0)
+    if min_max[0] is not None:
+        for _F in hist_F:
+            _F -= min_max[0]
+            _F /= min_max[1]
+        for _X in hist_X:
+            _X -= min_max[0]
+            _X /= min_max[1]
+    moea_pf = hist_F[-1].astype(np.float32)
+    hist_F = np.concatenate(hist_F, axis=0)
+    hist_X = np.concatenate(hist_X, axis=0)
+    hist_x = hist_X.astype(np.float32)
+    hist_y = hist_F.astype(np.float32)
+
+    # train surrogate model
+    for _ in range(20):
+        print(f'Loss: {sol.test_continue(hist_x, hist_y, return_single_loss=True)}')
+
+    ref_dirs = get_reference_directions("das-dennis", 3, n_partitions=8)
+    algorithm_surrogate = RVEA(pop_size=proxy_pop_size, ref_dirs=ref_dirs)
+    problem_surrogate = DTLZbProblem(n_var=n_var, n_obj=n_objectives, sol=sol)
+
+    res = minimize(problem_surrogate,
+                   algorithm_surrogate,
+                   ('n_gen', proxy_n_gen),
+                   verbose=False)
+
+    # calculate igd
+    sur_pf = res.F
+    metric = IGD(pf_true, zero_to_one=True)
+    igd.append(metric.do(sur_pf))
+    print(f'IGD of Proxy: {igd[-1]}')
+    # moea_pf = hist_F[-1]
+    igd.append(metric.do(moea_pf))
+    print(f'IGD of MOEA:  {igd[-1]}')
+    scale = []
+    for i in range(n_objectives):
+        concatenated = np.concatenate([moea_pf[:, i], pf_true[:, i]]),
+        data = [np.min(concatenated), np.max(concatenated)]
+        scale.append(data)
+    visualize_pf(pf=moea_pf, label='RVEA PF', color='blue', scale=scale, pf_true=pf_true)
+    scale = []
+    for i in range(n_objectives):
+        concatenated = np.concatenate([sur_pf[:, i], pf_true[:, i]]),
+        data = [np.min(concatenated), np.max(concatenated)]
+        scale.append(data)
+    visualize_pf(pf=sur_pf, label='SURR PF', color='g', scale=scale, pf_true=pf_true)
+    plt.show()
 
 
 def post_mean_std(data: list | np.ndarray):
@@ -284,5 +427,6 @@ if __name__ == '__main__':
         'd4': 'DTLZ4c',
         'd7': 'DTLZ7b',
     })
-    main(problems.d4, do_plot=True, print_progress=True, do_train=True)
+    main(problems.d1, do_plot=True, print_progress=True, do_train=True)
+    # train_with_moea_data(problems.d4)
     # main_benchmark(problems.d1)
