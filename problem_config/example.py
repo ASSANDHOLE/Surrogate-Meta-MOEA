@@ -50,6 +50,8 @@ def get_network_structure(args):
         ('relu', [True]),
         ('linear', [200, 200]),
         ('relu', [True]),
+        ('linear', [200, 200]),
+        ('relu', [True]),
         ('linear', [100, 200]),
         ('relu', [True]),
         ('linear', [n_args_out, 100]),
