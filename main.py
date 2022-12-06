@@ -1,4 +1,3 @@
-# Unified MAML for this project
 from __future__ import annotations
 
 import random
@@ -28,6 +27,7 @@ def cprint(*args, do_print=True, **kwargs):
 
 
 def main(problem_name: str,
+         data_problem_list: list,
          print_progress=False,
          do_plot=False,
          do_train=True,
@@ -68,8 +68,9 @@ def main(problem_name: str,
             args,
             normalize_targets=True,
             delta=delta,
-            problem_name=problem_name,
-            pf_ratio=0.5,
+            problem_name=data_problem_list,
+            test_problem_name=[problem_name],
+            pf_ratio=0,
             dim=dim
         )
     else:
@@ -122,7 +123,7 @@ def main(problem_name: str,
 
     cprint('Algorithm init complete', do_print=print_progress)
 
-    plot_int = 38
+    plot_int = 999999
     plotted = 1
 
     while fn_eval < fn_eval_limit:
@@ -176,12 +177,10 @@ def main(problem_name: str,
             visualize_pf(pf=pf_true_surrogate, label='Surrogate PF', color='green',
                          scale=scale, pf_true=pf_true, show=True)
 
-    # pf = evaluate(res.X, delta_finetune, n_objectives, min_max=min_max)
     if return_none_train_igd:
         return func_eval_igd, igd
     cprint('Algorithm complete', do_print=print_progress)
     pf = history_f
-    # moea_problem = NSGA2(pop_size=moea_pop_size, sampling=init_x)
     ref_dirs = get_reference_directions("das-dennis", 3, n_partitions=8)
     moea_problem = RVEA(pop_size=moea_pop_size, sampling=init_x, ref_dirs=ref_dirs)
     moea_pf, n_evals_moea, igd_moea = get_moea_data(n_var, n_objectives, delta_finetune,
@@ -215,7 +214,7 @@ def main(problem_name: str,
             'min_max': min_max,
             'pf_true': pf_true,
         }
-        nt_func_eval_igd, nt_igd = main(problem_name, return_none_train_igd=True, additional_data=additional_data)
+        nt_func_eval_igd, nt_igd = main(problem_name=problem_name,data_problem_list=data_problem_list, return_none_train_igd=True, additional_data=additional_data)
 
         func_evals = [func_eval_igd, n_evals_moea, func_eval_igd, nt_func_eval_igd]
         igds = [igd, igd_moea, Y_igd, nt_igd]
@@ -382,10 +381,18 @@ def main_benchmark(problem_name: str):
     _estimate_gram = 3.5
     usage_check(_n_proc)
     gpu_ids = [0, 1, 2, 3, 4, 5, 6, 7]
+    problems = NamedDict({
+        'd1': 'DTLZ1b',
+        'd2': 'DTLZ2c',
+        'd3': 'DTLZ3c',
+        'd4': 'DTLZ4c',
+        'd7': 'DTLZ7c',
+    })
+    data_problem_list = [problems.d2, problems.d3, problems.d4]
     _res = benchmark_for_seeds(main,
                                post_mean_std,
                                seeds=_seeds,
-                               func_args=[problem_name],
+                               func_args=[problem_name, data_problem_list],
                                func_kwargs={'print_progress': False, 'do_train': True},
                                n_proc=_n_proc,
                                gpu_ids=gpu_ids,
@@ -395,7 +402,7 @@ def main_benchmark(problem_name: str):
     _res = benchmark_for_seeds(main,
                                post_mean_std,
                                seeds=_seeds,
-                               func_args=[problem_name],
+                               func_args=[problem_name, data_problem_list],
                                func_kwargs={'print_progress': False, 'do_train': False},
                                n_proc=_n_proc,
                                gpu_ids=gpu_ids,
@@ -420,13 +427,18 @@ def fast_seed(seed: int) -> None:
 if __name__ == '__main__':
     # set_ipython_exception_hook()
     fast_seed(20010921)
-    # main()
-    # main_NSGA_4c(do_plot=True, print_progress=True, do_train=False)
-    problems = NamedDict({
+
+    _problems = NamedDict({
         'd1': 'DTLZ1b',
+        'd2': 'DTLZ2c',
+        'd3': 'DTLZ3c',
         'd4': 'DTLZ4c',
-        'd7': 'DTLZ7b',
+        'd7': 'DTLZ7c',
     })
-    main(problems.d1, do_plot=True, print_progress=True, do_train=True)
-    # train_with_moea_data(problems.d4)
-    # main_benchmark(problems.d1)
+    _data_problem_list = [_problems.d2, _problems.d3, _problems.d4]
+    main(problem_name=_problems.d4,
+         data_problem_list=_data_problem_list,
+         do_plot=True,
+         print_progress=True,
+         do_train=True
+         )

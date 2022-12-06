@@ -28,7 +28,7 @@ def pf_data(n_var: int, n_objective: int, delta1: int, delta2: int, problem_name
     return res.X
 
 
-def create_dataset_inner_0d(x, n_dim: Tuple[int, int], delta: Tuple[List[int | float], List[int | float]], problem_name: str) -> Tuple[
+def create_dataset_inner_0d(x, n_dim: Tuple[int, int], delta: Tuple[List[int | float], List[int | float]], problem_name: List[str]) -> Tuple[
     np.ndarray, np.ndarray
 ]:
     """
@@ -40,7 +40,7 @@ def create_dataset_inner_0d(x, n_dim: Tuple[int, int], delta: Tuple[List[int | f
         The number of variables and number of objectives
     delta : Tuple[List[int | float], List[int | float]]
         The delta1 and delta2 for each problem
-    problem_name : str
+    problem_name : List[str]
         The problem name
 
     Returns
@@ -53,14 +53,14 @@ def create_dataset_inner_0d(x, n_dim: Tuple[int, int], delta: Tuple[List[int | f
     n_var, n_obj = n_dim
     y = []
     for i in range(n_problem):
-        problem = get_custom_problem(name=problem_name, n_var=n_var, n_obj=n_obj, delta1=delta1[i], delta2=delta2[i])
+        problem = get_custom_problem(name=problem_name[i%len(problem_name)], n_var=n_var, n_obj=n_obj, delta1=delta1[i], delta2=delta2[i])
         y.extend([*problem.evaluate(x[i]).transpose()])
     y = np.array(y).astype(np.float32)
     new_x = np.repeat(x, n_obj, axis=0).astype(np.float32)
     return new_x, y
 
 
-def create_dataset_inner_1d(x, n_dim: Tuple[int, int], delta: Tuple[List[int | float], List[int | float]], problem_name: str) -> Tuple[
+def create_dataset_inner_1d(x, n_dim: Tuple[int, int], delta: Tuple[List[int | float], List[int | float]], problem_name: List[str]) -> Tuple[
     np.ndarray, np.ndarray
 ]:
     delta1, delta2 = delta
@@ -68,7 +68,7 @@ def create_dataset_inner_1d(x, n_dim: Tuple[int, int], delta: Tuple[List[int | f
     n_var, n_obj = n_dim
     y = []
     for i in range(n_problem):
-        problem = get_custom_problem(name=problem_name, n_var=n_var, n_obj=n_obj, delta1=delta1[i], delta2=delta2[i])
+        problem = get_custom_problem(name=problem_name[i%len(problem_name)], n_var=n_var, n_obj=n_obj, delta1=delta1[i], delta2=delta2[i])
         y.extend([problem.evaluate(x[i])])
     y = np.array(y).astype(np.float32)
     x = np.array(x).astype(np.float32)
@@ -76,7 +76,8 @@ def create_dataset_inner_1d(x, n_dim: Tuple[int, int], delta: Tuple[List[int | f
 
 
 def create_dataset(problem_dim: Tuple[int, int],
-                   problem_name: str,
+                   problem_name: List[str],
+                   test_problem_name: List[str],
                    x=None,
                    n_problem=None,
                    spt_qry=None,
@@ -94,8 +95,8 @@ def create_dataset(problem_dim: Tuple[int, int],
     ----------
     problem_dim : Tuple[int, int]
         The number of variables and number of objectives for each problem
-    problem_name : str
-        The problem name
+    problem_name : List[str]
+        The problem names
     x : Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
         [x_spt_train, x_qry_train, x_spt_test, x_qry_test]
         The input data, shape (4, n_problem, n_spt, n_variables)
@@ -163,7 +164,7 @@ def create_dataset(problem_dim: Tuple[int, int],
             # x.append(np.random.rand(n_problem[i], spt_qry[j], n_var))
 
     train_set = [*create_dataset_inner(x[0], problem_dim, delta[0], problem_name), *create_dataset_inner(x[1], problem_dim, delta[0], problem_name)]
-    test_set = [*create_dataset_inner(x[2], problem_dim, delta[1], problem_name), *create_dataset_inner(x[3], problem_dim, delta[1], problem_name)]
+    test_set = [*create_dataset_inner(x[2], problem_dim, delta[1], test_problem_name), *create_dataset_inner(x[3], problem_dim, delta[1], test_problem_name)]
     if normalize_targets:
         minimum = np.min(np.concatenate([train_set[1], test_set[1]]), axis=None)
         train_set[1] -= minimum
