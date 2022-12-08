@@ -55,7 +55,7 @@ class MamlWrapper:
         """
         assert len(self.train_set) == 4
         assert len(self.test_set) == 4
-        required_attr = ['epoch', 'update_lr', 'meta_lr', 'k_spt',
+        required_attr = ['epoch', 'update_lr', 'meta_lr', 'fine_tune_lr', 'k_spt',
                          'k_qry', 'update_step', 'update_step_test']
         assert all([hasattr(self.args, attr) for attr in required_attr])
         if 'n_way' not in self.args:
@@ -90,7 +90,14 @@ class MamlWrapper:
 
         loss_arr = []
         for epoch in range(self.args.epoch):
-            loss_arr.append(self.maml(*self.train_set))
+            if 'sgd_epoch' in self.args:
+                sgd_select_n = self.args.sgd_select_n
+                for sgd_epoch in range(self.args.sgd_epoch):
+                    train = np.random.choice(np.arange(self.train_set[0].shape[0], dtype=int), sgd_select_n)
+                    train = [data[train] for data in self.train_set]
+                    loss_arr.append(self.maml(*train))
+            else:
+                loss_arr.append(self.maml(*self.train_set))
             if print_loss and (epoch % print_period == 0 or epoch == self.args.epoch - 1):
                 print(f'Epoch {epoch:4d}: {loss_arr[-1]:.4f}')
         return loss_arr
@@ -128,7 +135,8 @@ class MamlWrapper:
                                                   return_single_lose=return_single_loss)
         return loss
 
-    def test_continue(self, x: np.ndarray, y: np.ndarray, return_single_loss: bool = True) -> None:
+    def test_continue(self, x: np.ndarray, y: np.ndarray, return_single_loss: bool = True,
+                      use_test_set: bool = True) -> List[List[float] | float]:
         """
         Test the model based on previous fine-tuned model
 
@@ -147,14 +155,24 @@ class MamlWrapper:
         x, y = torch.from_numpy(x), torch.from_numpy(y)
         x, y = x.to(self.device), y.to(self.device)
 
-        _, _, _nets, _fast_weights = self.maml.fine_tuning_continue(self.nets, self.fast_weights, x, y, *((None,) * 4),
-                                                                    return_single_lose=return_single_loss)
+        if use_test_set:
+            spt_x, spt_y, qry_x, qry_y = self.test_set
+        else:
+            spt_x, spt_y = (None,), (None,)
+            qry_x, qry_y = self.test_set[2:]
+
+        loss, _, _nets, _fast_weights = self.maml.fine_tuning_continue(self.nets, self.fast_weights, x, y,
+                                                                       spt_x, spt_y, qry_x, qry_y,
+                                                                       return_single_lose=return_single_loss)
         self.nets = _nets
         self.fast_weights = _fast_weights
+        return loss
 
     def __call__(self, x: np.ndarray) -> List[float]:
         if self.nets is None or self.fast_weights is None:
             raise ValueError('No previous fine-tuned model found, please use `test` instead')
         x = torch.from_numpy(x).to(self.device)
-        return [net(x, self.fast_weights[i]).detach().cpu().numpy().flatten()[0] for i, net in enumerate(self.nets)]
+        ret = [net(x, self.fast_weights[i]).detach().cpu().numpy().flatten() for i, net in enumerate(self.nets)]
+        ret = np.array(ret).flatten()
+        return ret
 

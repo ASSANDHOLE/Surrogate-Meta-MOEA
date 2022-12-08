@@ -54,18 +54,23 @@ def visualize_loss(maml_loss: List[Any] | np.ndarray, baseline_loss: List[Any] |
     plt.show()
 
 
-def visualize_pf(pf, label, color, scale=None, pf_true=None):
+def visualize_pf(pf, label, color, scale=None, pf_true=None, show=False):
+    scale = np.array(scale) if scale is not None else np.array([.5, .5, .5])
+    if len(scale.shape) == 1:
+        scale = np.array([[0, s] for s in scale])
     plt.figure(figsize=(8, 6))
     ax = plt.axes(projection='3d')
     ax.scatter3D(pf[:, 0], pf[:, 1], pf[:, 2], color=color, label=label)
     if pf_true is not None:
         ax.scatter3D(pf_true[:, 0], pf_true[:, 1], pf_true[:, 2], color='y', label='True Parato Front')
     if scale is not None:
-        ax.set_xlim(0, scale[0])
-        ax.set_ylim(0, scale[1])
-        ax.set_zlim(0, scale[2])
+        ax.set_xlim(*scale[0])
+        ax.set_ylim(*scale[1])
+        ax.set_zlim(*scale[2])
     ax.legend(loc='best')
     ax.set(xlabel="F_1", ylabel="F_2", zlabel="F_3")
+    if show:
+        plt.show()
 
 
 def visualize_igd(func_evals, igds, colors, labels):

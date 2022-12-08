@@ -23,10 +23,12 @@ class Meta(nn.Module):
 
         self.update_lr = args.update_lr
         self.meta_lr = args.meta_lr
+        self.fine_tune_lr = args.fine_tune_lr
         self.n_way = args.n_way
         self.k_spt = args.k_spt
         self.k_qry = args.k_qry
         self.task_num = args.task_num
+        self.dim = args.dim if 'dim' in args else 0
         self.update_step = args.update_step
         self.update_step_test = args.update_step_test
         imgc = 'imgc' in args and args.imgc or None
@@ -90,6 +92,7 @@ class Meta(nn.Module):
             with torch.no_grad():
                 # [setsz, nway]
                 logits_q = self.net(x_qry[i], self.net.parameters(), bn_training=True)
+                logits_q = logits_q.reshape(y_qry[i].shape)
                 loss_q = loss_func(logits_q, y_qry[i])
                 losses_q[0] += loss_q
 
@@ -97,6 +100,7 @@ class Meta(nn.Module):
             with torch.no_grad():
                 # [setsz, nway]
                 logits_q = self.net(x_qry[i], fast_weights, bn_training=True)
+                logits_q = logits_q.reshape(y_qry[i].shape)
                 loss_q = loss_func(logits_q, y_qry[i])
                 losses_q[1] += loss_q
 
@@ -110,6 +114,7 @@ class Meta(nn.Module):
                 fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, fast_weights)))
 
                 logits_q = self.net(x_qry[i], fast_weights, bn_training=True)
+                logits_q = logits_q.reshape(y_qry[i].shape)
                 # loss_q will be overwritten and just keep the loss_q on last update step.
                 loss_q = loss_func(logits_q, y_qry[i])
                 losses_q[k + 1] += loss_q
@@ -162,6 +167,7 @@ class Meta(nn.Module):
 
         # 1. run the i-th task and compute loss for k=0
         logits = net(x_spt)
+        logits = logits.reshape(y_spt.shape)
         loss = loss_func(logits, y_spt)
         grad = torch.autograd.grad(loss, net.parameters())
         fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, net.parameters())))
@@ -170,6 +176,7 @@ class Meta(nn.Module):
         for k in range(1, self.update_step_test):
             # 1. run the i-th task and compute loss for k=1~K-1
             logits = net(x_spt, fast_weights, bn_training=True)
+            logits = logits.reshape(y_spt.shape)
             loss = loss_func(logits, y_spt)
             # 2. compute grad on theta_pi
             grad = torch.autograd.grad(loss, fast_weights)
@@ -177,9 +184,10 @@ class Meta(nn.Module):
             fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, fast_weights)))
 
             if query_size != 0:
-                logits_q = net(x_qry, fast_weights, bn_training=True)
-                # loss_q will be overwritten and just keep the loss_q on last update step.
-                losses.append(loss_func(logits_q, y_qry).item())
+                with torch.no_grad():
+                    logits_q = net(x_qry, fast_weights, bn_training=False)
+                    logits_q = logits_q.reshape(y_qry.shape)
+                    losses.append(loss_func(logits_q, y_qry).item())
 
         ret_loss = losses[-1] if return_single_lose else losses
 
@@ -226,14 +234,15 @@ class Meta(nn.Module):
 
         for k in range(0, self.update_step_test):
             logits = net(x_spt, fast_weights, bn_training=True)
-            y_spt = y_spt.reshape(logits.shape)
+            logits = logits.reshape(y_spt.shape)
             loss = loss_func(logits, y_spt)
             grad = torch.autograd.grad(loss, fast_weights)
-            fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, fast_weights)))
+            fast_weights = list(map(lambda p: p[1] - self.fine_tune_lr * p[0], zip(grad, fast_weights)))
             if query_size != 0:
-                logits_q = net(x_qry, fast_weights, bn_training=True)
-                # loss_q will be overwritten and just keep the loss_q on last update step.
-                losses.append(loss_func(logits_q, y_qry).item())
+                with torch.no_grad():
+                    logits_q = net(x_qry, fast_weights, bn_training=False)
+                    logits_q = logits_q.reshape(y_qry.shape)
+                    losses.append(loss_func(logits_q, y_qry).item())
 
         if query_size != 0:
             ret_loss = losses[-1] if return_single_lose else losses
@@ -243,20 +252,29 @@ class Meta(nn.Module):
         return ret_loss, None if query_size == 0 else logits_q, net, fast_weights
 
     def fine_tuning_continue(self, nets, fast_weights, x, y, x_spt, y_spt, x_qry, y_qry, return_single_lose=True):
-        assert y.shape[0] == len(nets)
+        # assert y.shape[0] == len(nets)
+        if self.dim == 0:
+            y = y.T
         n_net = len(nets)
         ret = [[], [], [], []]
         for i in range(n_net):
             if x_spt is not None:
-                x_s, y_s = x_spt[i].reshape(1, *x.size()[1:]), y_spt[i].reshape(1, *y.size()[1:])
+                if self.dim == 0:
+                    x_s, y_s = x_spt[i], y_spt[i].reshape(-1, *y.size()[2:])
+                else:
+                    x_s, y_s = x_spt[i], y_spt[i].reshape(-1, *y.size()[1:])
             else:
                 x_s, y_s = None, None
             if x_qry is not None:
-                x_q, y_q = x_qry[i].reshape(1, *x_qry.size()[1:]), y_qry[i].reshape(1, *y_qry.size()[1:])
+                if self.dim == 0:
+                    x_q, y_q = x_qry[i], y_qry[i].reshape(-1, *y.size()[2:])
+                else:
+                    x_q, y_q = x_qry[i], y_qry[i].reshape(-1, *y.size()[1:])
             else:
                 x_q, y_q = None, None
+            yi = y[i] if self.dim == 0 else y
             t_loss, t_logits, t_net, t_weights = self._fine_tuning_continue(
-                nets[i], fast_weights[i], x, y[i], x_s, y_s, x_q, y_q, return_single_lose
+                nets[i], fast_weights[i], x, yi, x_s, y_s, x_q, y_q, return_single_lose
             )
             ret[0].append(t_loss)
             ret[1].append(t_logits)
@@ -291,6 +309,7 @@ class Meta(nn.Module):
         # pretrain
         # 1. run the i-th task and compute loss for k=0
         logits = net(train_x)
+        logits = logits.reshape(train_y.shape)
         loss = loss_func(logits, train_y)
         grad = torch.autograd.grad(loss, net.parameters())
         fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, net.parameters())))
@@ -298,6 +317,7 @@ class Meta(nn.Module):
         for k in range(1, self.update_step_test):
             # 1. run the i-th task and compute loss for k=1~K-1
             logits = net(train_x, fast_weights, bn_training=True)
+            logits = logits.reshape(train_y.shape)
             loss = loss_func(logits, train_y)
             # 2. compute grad on theta_pi
             grad = torch.autograd.grad(loss, fast_weights)

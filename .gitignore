@@ -3,3 +3,7 @@ __pycache__/
 *.py[cod]
 .cache
 *$py.class
+*.pkl
+temp*.py
+nas/config.json
+record.txt
