@@ -86,6 +86,8 @@ class Meta(nn.Module):
             logits = self.net(x_spt[i], vars=None, bn_training=True)
             loss = loss_func(logits, y_spt[i])
             grad = torch.autograd.grad(loss, self.net.parameters())
+            # clip gradient
+            _ = self.clip_grad_by_norm_(grad, 10)
             fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, self.net.parameters())))
 
             # this is the loss and accuracy before first update
@@ -110,6 +112,8 @@ class Meta(nn.Module):
                 loss = loss_func(logits, y_spt[i])
                 # 2. compute grad on theta_pi
                 grad = torch.autograd.grad(loss, fast_weights)
+                # clip gradient
+                _ = self.clip_grad_by_norm_(grad, 10)
                 # 3. theta_pi = theta_pi - train_lr * grad
                 fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, fast_weights)))
 
@@ -170,6 +174,8 @@ class Meta(nn.Module):
         logits = logits.reshape(y_spt.shape)
         loss = loss_func(logits, y_spt)
         grad = torch.autograd.grad(loss, net.parameters())
+        # clip gradient
+        _ = self.clip_grad_by_norm_(grad, 10)
         fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, net.parameters())))
         losses = []
 
@@ -180,6 +186,8 @@ class Meta(nn.Module):
             loss = loss_func(logits, y_spt)
             # 2. compute grad on theta_pi
             grad = torch.autograd.grad(loss, fast_weights)
+            # clip gradient
+            _ = self.clip_grad_by_norm_(grad, 10)
             # 3. theta_pi = theta_pi - train_lr * grad
             fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, fast_weights)))
 
@@ -237,6 +245,8 @@ class Meta(nn.Module):
             logits = logits.reshape(y_spt.shape)
             loss = loss_func(logits, y_spt)
             grad = torch.autograd.grad(loss, fast_weights)
+            # clip gradient
+            _ = self.clip_grad_by_norm_(grad, 10)
             fast_weights = list(map(lambda p: p[1] - self.fine_tune_lr * p[0], zip(grad, fast_weights)))
             if query_size != 0:
                 with torch.no_grad():

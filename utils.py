@@ -7,7 +7,7 @@ from IPython.core import ultratb
 class NamedDict(dict):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.__dict__ = self
+        # self.__dict__ = self
 
     def __setattr__(self, key, value):
         self[key] = value

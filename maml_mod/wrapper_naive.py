@@ -6,8 +6,10 @@ import torch
 from maml_mod import Meta, Learner
 from utils import NamedDict
 
+from .wrapper_base import MamlWrapperAbc
 
-class MamlWrapper:
+
+class MamlWrapper(MamlWrapperAbc):
     def __init__(self,
                  dataset: Tuple[
                      Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],

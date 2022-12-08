@@ -58,13 +58,12 @@ def _multi_processing_wrapper(data: tuple) -> Any:
         kwargs['gpu_id'] = gpu_id
     try:
         ret = func(*args, **kwargs)
+        print(f'{seed=} finished', flush=True)
     except Exception as e:
         print(f'Error in {seed=}: {e}', flush=True)
         ret = None
     if gpu_manager is not None:
         gpu_manager.return_gpu(gpu_id, lock=lock)
-
-    print(f'{seed=} finished')
 
     # deallocate the memory
     gc.collect()

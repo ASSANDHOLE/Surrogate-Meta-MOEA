@@ -3,8 +3,8 @@ import numpy as np
 from pymoo.core.problem import Problem
 from pymoo.problems.many.dtlz import get_ref_dirs
 
-from maml_mod import MamlWrapper
-
+from maml_mod import MamlWrapperAbc
+from utils import NamedDict
 
 class DTLZb(Problem):
     def __init__(self, n_var, n_obj, delta1, delta2, k=None):
@@ -17,7 +17,7 @@ class DTLZb(Problem):
             self.k = k
             n_var = k + n_obj - 1
         else:
-            raise Exception("Either provide number of variables or k!")
+            raise Exception('Either provide number of variables or k!')
 
         super().__init__(n_var=n_var, n_obj=n_obj, n_constr=0, xl=0, xu=1, type_var=np.double)
 
@@ -70,10 +70,13 @@ class DTLZ1b(DTLZb):
     def _evaluate(self, x, out, *args, **kwargs):
         X_, X_M = x[:, :self.n_obj - 1], x[:, self.n_obj - 1:]
         g = self.g1(X_M)
-        out["F"] = self.obj_func(X_, g)
+        out['F'] = self.obj_func(X_, g)
 
 
 class DTLZc(Problem):
+    def _evaluate(self, x, out, *args, **kwargs):
+        raise NotImplementedError
+
     def __init__(self, n_var, n_obj, delta1, delta2, k=None):
         self.delta1 = delta1
         self.delta2 = delta2
@@ -84,7 +87,7 @@ class DTLZc(Problem):
             self.k = k
             n_var = k + n_obj - 1
         else:
-            raise Exception("Either provide number of variables or k!")
+            raise Exception('Either provide number of variables or k!')
 
         super().__init__(n_var=n_var, n_obj=n_obj, n_constr=0, xl=0, xu=1, type_var=np.double)
 
@@ -117,7 +120,7 @@ class DTLZ1c(DTLZc):
         self.delta2 = delta2
 
     def _calc_pareto_front(self, ref_dirs=None):
-        raise Exception("Not implemented yet.")
+        raise NotImplementedError
 
     def obj_func(self, X_, g):
         f = []
@@ -137,7 +140,7 @@ class DTLZ1c(DTLZc):
     def _evaluate(self, x, out, *args, **kwargs):
         X_, X_M = x[:, :self.n_obj - 1], x[:, self.n_obj - 1:]
         g = self.g1(X_M) + self.delta1
-        out["F"] = self.obj_func(X_, g)
+        out['F'] = self.obj_func(X_, g)
 
 
 class DTLZ2c(DTLZc):
@@ -147,12 +150,12 @@ class DTLZ2c(DTLZc):
         self.delta2 = delta2
 
     def _calc_pareto_front(self, ref_dirs=None):
-        raise Exception("Not implemented yet.")
+        raise NotImplementedError
 
     def _evaluate(self, x, out, *args, **kwargs):
         X_, X_M = x[:, :self.n_obj - 1], x[:, self.n_obj - 1:]
         g = self.g2(X_M) + self.delta1
-        out["F"] = self.obj_func(X_, g, alpha=1)
+        out['F'] = self.obj_func(X_, g, alpha=1)
 
 
 class DTLZ3c(DTLZc):
@@ -162,12 +165,12 @@ class DTLZ3c(DTLZc):
         self.delta2 = delta2
 
     def _calc_pareto_front(self, ref_dirs=None):
-        raise Exception("Not implemented yet.")
+        raise NotImplementedError
 
     def _evaluate(self, x, out, *args, **kwargs):
         X_, X_M = x[:, :self.n_obj - 1], x[:, self.n_obj - 1:]
         g = self.g1(X_M) + self.delta1
-        out["F"] = self.obj_func(X_, g, alpha=1)
+        out['F'] = self.obj_func(X_, g, alpha=1)
 
 
 class DTLZ4c(DTLZc):
@@ -179,12 +182,12 @@ class DTLZ4c(DTLZc):
         self.d = d
 
     def _calc_pareto_front(self, ref_dirs=None):
-        raise Exception("Not implemented yet.")
+        raise NotImplementedError
 
     def _evaluate(self, x, out, *args, **kwargs):
         X_, X_M = x[:, :self.n_obj - 1], x[:, self.n_obj - 1:]
         g = self.g2(X_M) + self.delta1
-        out["F"] = self.obj_func(X_, g, alpha=self.alpha)
+        out['F'] = self.obj_func(X_, g, alpha=self.alpha)
 
 
 class DTLZ5c(DTLZc):
@@ -194,7 +197,7 @@ class DTLZ5c(DTLZc):
         self.delta2 = delta2
 
     def _calc_pareto_front(self):
-        raise Exception("Not implemented yet.")
+        raise NotImplementedError
 
     def _evaluate(self, x, out, *args, **kwargs):
         X_, X_M = x[:, :self.n_obj - 1], x[:, self.n_obj - 1:]
@@ -204,7 +207,7 @@ class DTLZ5c(DTLZc):
         theta = np.column_stack([x[:, 0], theta[:, 1:]])
         g += self.delta1
 
-        out["F"] = self.obj_func(theta, g)
+        out['F'] = self.obj_func(theta, g)
 
 
 class DTLZ6c(DTLZc):
@@ -214,7 +217,7 @@ class DTLZ6c(DTLZc):
         self.delta2 = delta2
 
     def _calc_pareto_front(self):
-        raise Exception("Not implemented yet.")
+        raise NotImplementedError
 
     def _evaluate(self, x, out, *args, **kwargs):
         X_, X_M = x[:, :self.n_obj - 1], x[:, self.n_obj - 1:]
@@ -224,7 +227,7 @@ class DTLZ6c(DTLZc):
         theta = np.column_stack([x[:, 0], theta[:, 1:]])
         g += self.delta1
 
-        out["F"] = self.obj_func(theta, g)
+        out['F'] = self.obj_func(theta, g)
 
 
 class DTLZ7c(DTLZc):
@@ -234,7 +237,7 @@ class DTLZ7c(DTLZc):
         super().__init__(n_var=n_var, n_obj=n_obj, delta1=delta1, delta2=delta2, **kwargs)
 
     def _calc_pareto_front(self):
-        raise Exception("Not implemented yet.")
+        raise NotImplementedError
 
     def _evaluate(self, x, out, *args, **kwargs):
         f = []
@@ -245,11 +248,11 @@ class DTLZ7c(DTLZc):
         g = 1 + 9 / self.k * np.sum(x[:, -self.k:], axis=1) + self.delta1
         h = self.n_obj - np.sum(f / (1 + g[:, None]) * (1 + np.sin(3 * np.pi * f)), axis=1)
 
-        out["F"] = np.column_stack([f, (1 + g) * h + self.delta2])
+        out['F'] = np.column_stack([f, (1 + g) * h + self.delta2])
 
 
 class DTLZbProblem(Problem):
-    def __init__(self, n_var: int, n_obj: int, sol: MamlWrapper):
+    def __init__(self, n_var: int, n_obj: int, sol: MamlWrapperAbc):
         self.sol = sol
         super().__init__(n_var=n_var,
                          n_obj=n_obj,
@@ -264,22 +267,34 @@ class DTLZbProblem(Problem):
         for xi in x:
             fi = self.sol(xi)
             f.append(fi)
-        out["F"] = np.array(f)
+        out['F'] = np.array(f)
+
+
+_PROBLEMS = NamedDict({
+    'DTLZ1b': DTLZ1b,
+    'DTLZ1c': DTLZ1c,
+    'DTLZ2c': DTLZ2c,
+    'DTLZ3c': DTLZ3c,
+    'DTLZ4c': DTLZ4c,
+    'DTLZ5c': DTLZ5c,
+    'DTLZ6c': DTLZ6c,
+    'DTLZ7c': DTLZ7c
+})
+
+_PROBLEM_NAMES = NamedDict({
+    'd1b': 'DTLZ1b',
+    'd1c': 'DTLZ1c',
+    'd2c': 'DTLZ2c',
+    'd3c': 'DTLZ3c',
+    'd4c': 'DTLZ4c',
+    'd5c': 'DTLZ5c',
+    'd6c': 'DTLZ6c',
+    'd7c': 'DTLZ7c'
+})
 
 
 def get_custom_problem(name, *args, **kwargs):
-    PROBLEM = {
-        "DTLZ1b": DTLZ1b,
-        "DTLZ1c": DTLZ1c,
-        "DTLZ2c": DTLZ2c,
-        "DTLZ3c": DTLZ3c,
-        "DTLZ4c": DTLZ4c,
-        "DTLZ5c": DTLZ5c,
-        "DTLZ6c": DTLZ6c,
-        "DTLZ7c": DTLZ7c
-    }
+    if name not in _PROBLEMS:
+        raise Exception(f'Problem: {name} not found.')
 
-    if name not in PROBLEM:
-        raise Exception(f"Problem: {name} not found.")
-
-    return PROBLEM[name](*args, **kwargs)
+    return _PROBLEMS[name](*args, **kwargs)

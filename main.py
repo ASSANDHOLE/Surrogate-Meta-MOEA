@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List
+from typing import List, Literal
 
 import numpy as np
 import torch
@@ -14,8 +14,9 @@ from pymoo.util.ref_dirs import get_reference_directions
 
 from DTLZ_problem import DTLZbProblem, get_custom_problem
 from DTLZ_problem import evaluate, get_pf, get_moea_data
+from DTLZ_problem import DTLZ_PROBLEM_NAMES
 from benchmarking import benchmark_for_seeds
-from maml_mod import MamlWrapper
+from maml_mod import MamlWrapperMrA as MamlWrapper
 from problem_config.example import get_args, get_network_structure, get_dataset
 from utils import NamedDict, set_ipython_exception_hook
 from visualization import visualize_pf, visualize_igd
@@ -48,7 +49,7 @@ def generate_dataset(additional_data, args, dataset_problem_list, problem_name, 
         dataset_x[2] = dataset_x[2][np.random.choice(dataset_x[2].shape[0], args.k_spt, replace=False), :]
         dataset, min_max = get_dataset(
             args,
-            normalize_targets=True,
+            normalize_targets=False,
             delta=delta,
             problem_name=dataset_problem_list,
             test_problem_name=[problem_name],
@@ -198,14 +199,14 @@ def main(problem_name: str,
     #####################
 
     # The IGD of our method, i.e., Meta-Guided Surrogate-Assisted MOEA
-    ours_igd = [igd_metric.do(history_f), igd_metric.do(history_f)]
+    ours_igd = [igd_metric.do(history_f)] * 2
     # The IGD of the Surrogate Model as an approximation of the real problem
     # For visualization purpose
-    surrogate_per_update_idg = [igd_metric.do(history_f), ours_igd[-1]]
+    surrogate_per_update_idg = [*ours_igd]
     # The IGD of the Baseline MOEA
     moea_igd: list | np.ndarray
     # The IGD of our method, only that it is *NOT* meta-trained
-    ours_no_meta_igd : list | np.ndarray
+    ours_no_meta_igd: list | np.ndarray
 
     # igd indexes
     ours_igd_index = [0, fn_eval]  # for ours_igd and surrogate_per_update_idg
@@ -218,7 +219,7 @@ def main(problem_name: str,
     ## Start Fine-Tuning Surrogate #
     ################################
     # parameters for plot the PF of the *surrogate model*
-    plot_interval = 30
+    plot_interval = 80
     plotted = 1
     while fn_eval < fn_eval_limit:
         cprint(f'fn_eval: {fn_eval}', do_print=print_progress)
@@ -238,8 +239,9 @@ def main(problem_name: str,
 
         # the objective of the real problem by the Pareto set of the surrogate model
         # For visualization purpose
-        objective_true = evaluate(surrogate_pareto_set, problem_delta, n_objectives, problem_name, min_max=min_max)
-        surrogate_per_update_idg.append(igd_metric.do(objective_true))
+        if do_plot:
+            objective_true = evaluate(surrogate_pareto_set, problem_delta, n_objectives, problem_name, min_max=min_max)
+            surrogate_per_update_idg.append(igd_metric.do(objective_true))
 
         # select individuals to add to the training set
         if len(surrogate_pareto_set) > max_pts_num:
@@ -252,9 +254,9 @@ def main(problem_name: str,
         history_x = np.vstack((history_x, surrogate_pareto_set))
         history_f = np.vstack((history_f, y_true))
 
-        #################################
-        # fine-tune the surrogate model #
-        #################################
+        ##################################################
+        # Fine-Tune the Surrogate Model With New Dataset #
+        ##################################################
         cont_loss = 0  # suppress ide warning of (possibly) undefined variable
         for _ in range(5):
             cont_loss = meta.test_continue(history_x, history_f, return_single_loss=True)
@@ -264,7 +266,7 @@ def main(problem_name: str,
         ours_igd_index.append(fn_eval)
 
         # plot the PF of the surrogate model
-        if fn_eval > plotted + plot_interval:
+        if fn_eval > plotted + plot_interval and do_plot:
             surrogate_pf = get_pf(n_objectives, problem_surrogate)
             scale = get_plot_scale(surrogate_pf, problem_pf, n_objectives)
             plotted = fn_eval
@@ -323,11 +325,12 @@ def main(problem_name: str,
 
     # deallocate memory
     del meta
-    return ours_igd[-1]
+    return ours_igd[-1], moea_igd[-1]
 
 
 def post_mean_std(data: list | np.ndarray):
-    return np.mean(data), np.std(data)
+    data = np.array(data)
+    return np.mean(data, axis=0), np.std(data, axis=0)
 
 
 def main_benchmark(problem_name: str):
@@ -336,14 +339,7 @@ def main_benchmark(problem_name: str):
     init_seed = 42
     _estimate_gram = 3.5
     gpu_ids = [0, 1, 2, 3, 4, 5, 6, 7]
-    problems = NamedDict({
-        'd1': 'DTLZ1b',
-        'd2': 'DTLZ2c',
-        'd3': 'DTLZ3c',
-        'd4': 'DTLZ4c',
-        'd7': 'DTLZ7c',
-    })
-    data_problem_list = [problems.d2, problems.d3, problems.d4]
+    data_problem_list = [DTLZ_PROBLEM_NAMES.d2c, DTLZ_PROBLEM_NAMES.d3c, DTLZ_PROBLEM_NAMES.d4c]
     _res = benchmark_for_seeds(main,
                                post_mean_std,
                                seeds=_seeds,
@@ -353,7 +349,8 @@ def main_benchmark(problem_name: str):
                                gpu_ids=gpu_ids,
                                estimated_gram=_estimate_gram,
                                init_seed=init_seed)
-    print(f'MAML Trained IGD: {_res[0]} +- {_res[1]}')
+    print(f'MAML All IGD: {_res[0][0]} +- {_res[0][1]}')
+    print(f'MOEA IGD:     {_res[1][0]} +- {_res[1][1]}')
     _res = benchmark_for_seeds(main,
                                post_mean_std,
                                seeds=_seeds,
@@ -363,7 +360,7 @@ def main_benchmark(problem_name: str):
                                gpu_ids=gpu_ids,
                                estimated_gram=_estimate_gram,
                                init_seed=init_seed)
-    print(f'NON-Trained  IGD: {_res[0]} +- {_res[1]}')
+    print(f'MAML One IGD: {_res[0][0]} +- {_res[0][1]}')
 
 
 def fast_seed(seed: int) -> None:
@@ -382,18 +379,9 @@ def fast_seed(seed: int) -> None:
 if __name__ == '__main__':
     set_ipython_exception_hook()
     fast_seed(20010921)
-    _problems = NamedDict({
-        'd1b': 'DTLZ1b',
-        'd1c': 'DTLZ1c',
-        'd2c': 'DTLZ2c',
-        'd3c': 'DTLZ3c',
-        'd4c': 'DTLZ4c',
-        'd5c': 'DTLZ5c',
-        'd6c': 'DTLZ6c',
-        'd7c': 'DTLZ7c',
-    })
-    _data_problem_list = [_problems.d2c, _problems.d3c, _problems.d4c]
-    main(problem_name=_problems.d4c,
+
+    _data_problem_list = [DTLZ_PROBLEM_NAMES.d4c]
+    main(problem_name=DTLZ_PROBLEM_NAMES.d4c,
          dataset_problem_list=_data_problem_list,
          do_plot=True,
          print_progress=True,
