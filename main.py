@@ -205,7 +205,7 @@ def main(problem_name: str,
     # The IGD of the Baseline MOEA
     moea_igd: list | np.ndarray
     # The IGD of our method, only that it is *NOT* meta-trained
-    ours_no_meta_igd = list | np.ndarray
+    ours_no_meta_igd : list | np.ndarray
 
     # igd indexes
     ours_igd_index = [0, fn_eval]  # for ours_igd and surrogate_per_update_idg
@@ -383,14 +383,17 @@ if __name__ == '__main__':
     set_ipython_exception_hook()
     fast_seed(20010921)
     _problems = NamedDict({
-        'd1': 'DTLZ1b',
-        'd2': 'DTLZ2c',
-        'd3': 'DTLZ3c',
-        'd4': 'DTLZ4c',
-        'd7': 'DTLZ7c',
+        'd1b': 'DTLZ1b',
+        'd1c': 'DTLZ1c',
+        'd2c': 'DTLZ2c',
+        'd3c': 'DTLZ3c',
+        'd4c': 'DTLZ4c',
+        'd5c': 'DTLZ5c',
+        'd6c': 'DTLZ6c',
+        'd7c': 'DTLZ7c',
     })
-    _data_problem_list = [_problems.d2, _problems.d3, _problems.d4]
-    main(problem_name=_problems.d4,
+    _data_problem_list = [_problems.d2c, _problems.d3c, _problems.d4c]
+    main(problem_name=_problems.d4c,
          dataset_problem_list=_data_problem_list,
          do_plot=True,
          print_progress=True,

@@ -20,11 +20,11 @@ def pf_data(n_var: int, n_objective: int, delta1: int, delta2: int, problem_name
     ref_dirs = get_reference_directions("das-dennis", n_objective, n_partitions=12)
     N = ref_dirs.shape[0]
     # create the algorithm object
-    algorithm = NSGA3(pop_size=N, ref_dirs=ref_dirs)
+    algorithm = NSGA3(pop_size=N+1, ref_dirs=ref_dirs)
     # execute the optimization
     res = minimize(problem,
                    algorithm,
-                   termination=('n_gen', 100))
+                   termination=('n_gen', 600))
     return res.X
 
 
@@ -266,11 +266,11 @@ def get_pf(n_objectives: int, problem: Any,
     ref_dirs = get_reference_directions("das-dennis", n_objectives, n_partitions=12)
     N = ref_dirs.shape[0]
     # create the algorithm object
-    algorithm = NSGA3(pop_size=N, ref_dirs=ref_dirs)
+    algorithm = NSGA3(pop_size=N+1, ref_dirs=ref_dirs)
     # execute the optimization
     res = minimize(problem,
                    algorithm,
-                   termination=('n_gen', 100))
+                   termination=('n_gen', 600))
     pf = res.F
     if min_max is not None and min_max[0] is not None:
         pf -= min_max[0]

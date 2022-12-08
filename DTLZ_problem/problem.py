@@ -1,7 +1,7 @@
 import numpy as np
+
 from pymoo.core.problem import Problem
 from pymoo.problems.many.dtlz import get_ref_dirs
-from pymoo.util.remote import Remote
 
 from maml_mod import MamlWrapper
 
@@ -98,11 +98,11 @@ class DTLZc(Problem):
         f = []
 
         for i in range(0, self.n_obj):
-            _f = (1 + self.delta1 + g)
+            _f = (1 + g)
             _f *= np.prod(np.cos(np.power(X_[:, :X_.shape[1] - i], alpha) * np.pi / 2.0), axis=1)
             if i > 0:
                 _f *= np.sin(np.power(X_[:, X_.shape[1] - i], alpha) * np.pi / 2.0)
-            _f = _f + self.delta2
+            _f += self.delta2
 
             f.append(_f)
 
@@ -110,45 +110,121 @@ class DTLZc(Problem):
         return f
 
 
-class DTLZ2c(DTLZc):
+class DTLZ1c(DTLZc):
     def __init__(self, n_var=10, n_obj=3, delta1=0, delta2=0, **kwargs):
         super().__init__(n_var=n_var, n_obj=n_obj, delta1=delta1, delta2=delta2, **kwargs)
+        self.delta1 = delta1
+        self.delta2 = delta2
 
     def _calc_pareto_front(self, ref_dirs=None):
-        pass
+        raise Exception("Not implemented yet.")
+
+    def obj_func(self, X_, g):
+        f = []
+
+        for i in range(0, self.n_obj):
+            _f = 0.5 * (1 + g)
+            _f *= np.prod(X_[:, :X_.shape[1] - i], axis=1)
+            if i > 0:
+                _f *= 1 - X_[:, X_.shape[1] - i]
+            _f += self.delta2
+
+            f.append(_f)
+
+        f = np.column_stack(f)
+        return f
 
     def _evaluate(self, x, out, *args, **kwargs):
         X_, X_M = x[:, :self.n_obj - 1], x[:, self.n_obj - 1:]
-        g = self.g2(X_M)
+        g = self.g1(X_M) + self.delta1
+        out["F"] = self.obj_func(X_, g)
+
+
+class DTLZ2c(DTLZc):
+    def __init__(self, n_var=10, n_obj=3, delta1=0, delta2=0, **kwargs):
+        super().__init__(n_var=n_var, n_obj=n_obj, delta1=delta1, delta2=delta2, **kwargs)
+        self.delta1 = delta1
+        self.delta2 = delta2
+
+    def _calc_pareto_front(self, ref_dirs=None):
+        raise Exception("Not implemented yet.")
+
+    def _evaluate(self, x, out, *args, **kwargs):
+        X_, X_M = x[:, :self.n_obj - 1], x[:, self.n_obj - 1:]
+        g = self.g2(X_M) + self.delta1
         out["F"] = self.obj_func(X_, g, alpha=1)
 
 
 class DTLZ3c(DTLZc):
     def __init__(self, n_var=10, n_obj=3, delta1=0, delta2=0, **kwargs):
         super().__init__(n_var=n_var, n_obj=n_obj, delta1=delta1, delta2=delta2, **kwargs)
+        self.delta1 = delta1
+        self.delta2 = delta2
 
     def _calc_pareto_front(self, ref_dirs=None):
-        pass
+        raise Exception("Not implemented yet.")
 
     def _evaluate(self, x, out, *args, **kwargs):
         X_, X_M = x[:, :self.n_obj - 1], x[:, self.n_obj - 1:]
-        g = self.g1(X_M)
+        g = self.g1(X_M) + self.delta1
         out["F"] = self.obj_func(X_, g, alpha=1)
 
 
 class DTLZ4c(DTLZc):
     def __init__(self, n_var=10, n_obj=3, alpha=100, d=100, delta1=0, delta2=0, **kwargs):
         super().__init__(n_var=n_var, n_obj=n_obj, delta1=delta1, delta2=delta2, **kwargs)
+        self.delta1 = delta1
+        self.delta2 = delta2
         self.alpha = alpha
         self.d = d
 
     def _calc_pareto_front(self, ref_dirs=None):
-        pass
+        raise Exception("Not implemented yet.")
+
+    def _evaluate(self, x, out, *args, **kwargs):
+        X_, X_M = x[:, :self.n_obj - 1], x[:, self.n_obj - 1:]
+        g = self.g2(X_M) + self.delta1
+        out["F"] = self.obj_func(X_, g, alpha=self.alpha)
+
+
+class DTLZ5c(DTLZc):
+    def __init__(self, n_var=10, n_obj=3, delta1=0, delta2=0, **kwargs):
+        super().__init__(n_var=n_var, n_obj=n_obj, delta1=delta1, delta2=delta2, **kwargs)
+        self.delta1 = delta1
+        self.delta2 = delta2
+
+    def _calc_pareto_front(self):
+        raise Exception("Not implemented yet.")
 
     def _evaluate(self, x, out, *args, **kwargs):
         X_, X_M = x[:, :self.n_obj - 1], x[:, self.n_obj - 1:]
         g = self.g2(X_M)
-        out["F"] = self.obj_func(X_, g, alpha=self.alpha)
+
+        theta = 1 / (2 * (1 + self.delta1 + g[:, None])) * (1 + self.delta1 + 2 * g[:, None] * X_)
+        theta = np.column_stack([x[:, 0], theta[:, 1:]])
+        g += self.delta1
+
+        out["F"] = self.obj_func(theta, g)
+
+
+class DTLZ6c(DTLZc):
+    def __init__(self, n_var=10, n_obj=3, delta1=0, delta2=0, **kwargs):
+        super().__init__(n_var=n_var, n_obj=n_obj, delta1=delta1, delta2=delta2, **kwargs)
+        self.delta1 = delta1
+        self.delta2 = delta2
+
+    def _calc_pareto_front(self):
+        raise Exception("Not implemented yet.")
+
+    def _evaluate(self, x, out, *args, **kwargs):
+        X_, X_M = x[:, :self.n_obj - 1], x[:, self.n_obj - 1:]
+        g = np.sum(np.power(X_M, 0.1), axis=1)
+
+        theta = 1 / (2 * (1 + self.delta1 + g[:, None])) * (1 + self.delta1 + 2 * g[:, None] * X_)
+        theta = np.column_stack([x[:, 0], theta[:, 1:]])
+        g += self.delta1
+
+        out["F"] = self.obj_func(theta, g)
 
 
 class DTLZ7c(DTLZc):
@@ -158,7 +234,7 @@ class DTLZ7c(DTLZc):
         super().__init__(n_var=n_var, n_obj=n_obj, delta1=delta1, delta2=delta2, **kwargs)
 
     def _calc_pareto_front(self):
-        pass
+        raise Exception("Not implemented yet.")
 
     def _evaluate(self, x, out, *args, **kwargs):
         f = []
@@ -194,9 +270,12 @@ class DTLZbProblem(Problem):
 def get_custom_problem(name, *args, **kwargs):
     PROBLEM = {
         "DTLZ1b": DTLZ1b,
+        "DTLZ1c": DTLZ1c,
         "DTLZ2c": DTLZ2c,
         "DTLZ3c": DTLZ3c,
         "DTLZ4c": DTLZ4c,
+        "DTLZ5c": DTLZ5c,
+        "DTLZ6c": DTLZ6c,
         "DTLZ7c": DTLZ7c
     }
 
