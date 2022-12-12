@@ -268,6 +268,7 @@ class DTLZbProblem(Problem):
             fi = self.sol(xi)
             f.append(fi)
         out['F'] = np.array(f)
+        return np.array(f)
 
 
 _PROBLEMS = NamedDict({

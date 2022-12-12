@@ -13,7 +13,7 @@ from pymoo.optimize import minimize
 from pymoo.util.ref_dirs import get_reference_directions
 
 from DTLZ_problem import DTLZbProblem, get_custom_problem
-from DTLZ_problem import evaluate, get_pf, get_moea_data
+from DTLZ_problem import evaluate, get_pf, get_moea_data, get_ps
 from DTLZ_problem import DTLZ_PROBLEM_NAMES
 from benchmarking import benchmark_for_seeds
 from maml_mod import MamlWrapperMrA as MamlWrapper
@@ -41,15 +41,15 @@ def generate_dataset(additional_data, args, dataset_problem_list, problem_name, 
     if additional_data is None:
         delta = []
         for i in range(2):
-            delta.append([np.random.rand(args.train_test[i]) * 20, np.random.rand(args.train_test[i]) * 20])
+            delta.append([np.random.rand(args.train_test[i]) * 30, np.random.rand(args.train_test[i]) * 30])
         # dataset_x = [train_support_x, train_query_x, test_support_x, test_query_x]
         dataset_x = [None, None, None, None]
         # generate test_support_x for both surrogate and baseline moea
-        dataset_x[2] = sampling_lhs(n_samples=11 * n_var - 1, n_var=n_var, xl=0, xu=1)
+        dataset_x[2] = sampling_lhs(n_samples=1000, n_var=n_var, xl=0, xu=1)
         dataset_x[2] = dataset_x[2][np.random.choice(dataset_x[2].shape[0], args.k_spt, replace=False), :]
         dataset, min_max = get_dataset(
             args,
-            normalize_targets=False,
+            normalize_targets=True,
             delta=delta,
             problem_name=dataset_problem_list,
             test_problem_name=[problem_name],
@@ -152,6 +152,7 @@ def main(problem_name: str,
     # acquired by MOEA with adequate
     # amount of function evaluations
     problem_pf: np.ndarray
+    problem_ps: np.ndarray
 
     igd_metric: IGD
 
@@ -177,8 +178,10 @@ def main(problem_name: str,
 
     if additional_data is None:
         problem_pf = get_pf(n_objectives, problem, min_max)
+        problem_ps = get_ps(n_var, n_objectives, problem_delta[0], problem_delta[1], problem_name)
     else:
         problem_pf = additional_data['problem_pf']
+        problem_ps = additional_data['problem_ps']
 
     # serve as a simpler way of performing non-dominated sorting
     res = minimize(problem=problem,
@@ -267,10 +270,17 @@ def main(problem_name: str,
 
         # plot the PF of the surrogate model
         if fn_eval > plotted + plot_interval and do_plot:
+            # plot the PF of the surrogate model
             surrogate_pf = get_pf(n_objectives, problem_surrogate)
             scale = get_plot_scale(surrogate_pf, problem_pf, n_objectives)
             plotted = fn_eval
             visualize_pf(pf=surrogate_pf, label='Surrogate PF', color='green',
+                         scale=scale, pf_true=problem_pf)
+            # plot the PS evaluated by the surrogate model
+            surrogate_pf = problem_surrogate.evaluate(problem_ps, {})
+            scale = get_plot_scale(surrogate_pf, problem_pf, n_objectives)
+            plotted = fn_eval
+            visualize_pf(pf=surrogate_pf, label='PS evaluate by surrogate', color='magenta',
                          scale=scale, pf_true=problem_pf, show=True)
 
     if return_none_train_igd:
@@ -349,8 +359,8 @@ def main_benchmark(problem_name: str):
                                gpu_ids=gpu_ids,
                                estimated_gram=_estimate_gram,
                                init_seed=init_seed)
-    print(f'MAML All IGD: {_res[0][0]} +- {_res[0][1]}')
-    print(f'MOEA IGD:     {_res[1][0]} +- {_res[1][1]}')
+    print(f'MAML All IGD: {_res[0][0]} +- {_res[1][0]}')
+    print(f'MOEA IGD:     {_res[0][1]} +- {_res[1][1]}')
     _res = benchmark_for_seeds(main,
                                post_mean_std,
                                seeds=_seeds,
@@ -360,7 +370,7 @@ def main_benchmark(problem_name: str):
                                gpu_ids=gpu_ids,
                                estimated_gram=_estimate_gram,
                                init_seed=init_seed)
-    print(f'MAML One IGD: {_res[0][0]} +- {_res[0][1]}')
+    print(f'MAML One IGD: {_res[0][0]} +- {_res[1][0]}')
 
 
 def fast_seed(seed: int) -> None:
@@ -378,7 +388,7 @@ def fast_seed(seed: int) -> None:
 
 if __name__ == '__main__':
     set_ipython_exception_hook()
-    fast_seed(20010921)
+    fast_seed(20010924)
 
     _data_problem_list = [DTLZ_PROBLEM_NAMES.d4c]
     main(problem_name=DTLZ_PROBLEM_NAMES.d4c,

@@ -320,9 +320,9 @@ class MrMamlAct(nn.Module):
         for i in range(n_net):
             if x_spt is not None:
                 if self.dim == 0:
-                    x_s, y_s = x_spt[i], y_spt[i].reshape(-1, *y.size()[2:])
+                    x_s, y_s = x_spt[i], y_spt[i].view(-1, *y.size()[2:])
                 else:
-                    x_s, y_s = x_spt[i], y_spt[i].reshape(-1, *y.size()[1:])
+                    x_s, y_s = x_spt[i], y_spt[i].view(-1, *y.size()[1:])
             else:
                 x_s, y_s = None, None
             if x_qry is not None:

@@ -15,7 +15,7 @@ except ImportError:
     from problem import get_custom_problem
 
 
-def pf_data(n_var: int, n_objective: int, delta1: int, delta2: int, problem_name: str) -> np.ndarray:
+def get_ps(n_var: int, n_objective: int, delta1: int, delta2: int, problem_name: str) -> np.ndarray:
     problem = get_custom_problem(name=problem_name,
                                  n_var=n_var,
                                  n_obj=n_objective,
@@ -142,7 +142,7 @@ def create_dataset(problem_dim: Tuple[int, int],
         pf_num = pf_num if pf_num > 0 else 0
         if pf_num > 0:
             for k in range(n_problem[_i]):
-                ps = pf_data(n_var, n_obj, delta[_i][_j][k], delta[_i][_j][k], problem_name_list[k%len(problem_name_list)])
+                ps = get_ps(n_var, n_obj, delta[_i][_j][k], delta[_i][_j][k], problem_name_list[k%len(problem_name_list)])
                 x_pf.append(ps[np.random.choice(ps.shape[0], pf_num)])
             x_pf = np.array(x_pf)
         x_ran = np.random.rand(n_problem[_i], spt_qry[_j] - pf_num, n_var)
