@@ -12,11 +12,11 @@ from pymoo.operators.sampling.lhs import sampling_lhs
 from pymoo.optimize import minimize
 from pymoo.util.ref_dirs import get_reference_directions
 
-from DTLZ_problem import DTLZbProblem, get_custom_problem
+from DTLZ_problem import DTLZbProblem, WFGcProblem, get_custom_problem
 from DTLZ_problem import evaluate, get_pf, get_moea_data, get_ps
 from DTLZ_problem import DTLZ_PROBLEM_NAMES
 from benchmarking import benchmark_for_seeds
-from maml_mod import MamlWrapperMrA as MamlWrapper
+from maml_mod import MamlWrapperNaive as MamlWrapper
 from problem_config.example import get_args, get_network_structure, get_dataset
 from utils import NamedDict, set_ipython_exception_hook
 from visualization import visualize_pf, visualize_igd
@@ -49,7 +49,7 @@ def generate_dataset(additional_data, args, dataset_problem_list, problem_name, 
         dataset_x[2] = dataset_x[2][np.random.choice(dataset_x[2].shape[0], args.k_spt, replace=False), :]
         dataset, min_max = get_dataset(
             args,
-            normalize_targets=True,
+            normalize_targets=False,
             delta=delta,
             problem_name=dataset_problem_list,
             test_problem_name=[problem_name],
@@ -232,7 +232,8 @@ def main(problem_name: str,
         ########################################
         ref_dirs = get_reference_directions("das-dennis", 3, n_partitions=8)
         algorithm_surrogate = RVEA(pop_size=proxy_pop_size, sampling=history_x, ref_dirs=ref_dirs)
-        problem_surrogate = DTLZbProblem(n_var=n_var, n_obj=n_objectives, sol=meta)
+        problem_surrogate = DTLZbProblem(n_var=n_var, n_obj=n_objectives, sol=meta) if problem_name[0] == 'D' \
+            else WFGcProblem(n_var=n_var, n_obj=n_objectives, sol=meta)
         res = minimize(problem_surrogate,
                        algorithm_surrogate,
                        ('n_gen', proxy_n_gen),
@@ -289,7 +290,7 @@ def main(problem_name: str,
     cprint('Algorithm complete', do_print=print_progress)
 
     ref_dirs = get_reference_directions("das-dennis", 3, n_partitions=8)
-    moea_problem = RVEA(pop_size=moea_pop_size, sampling=init_x, ref_dirs=ref_dirs)
+    moea_problem = RVEA(pop_size=moea_pop_size, ref_dirs=ref_dirs)
     moea_pf, moea_igd_index, moea_igd = get_moea_data(n_var, n_objectives, problem_delta,
                                                     moea_problem,
                                                     fn_eval_limit,
@@ -316,6 +317,7 @@ def main(problem_name: str,
             'dataset': dataset,
             'min_max': min_max,
             'problem_pf': problem_pf,
+            'problem_ps': problem_ps
         }
         ours_no_meta_igd_index, ours_no_meta_igd = main(problem_name=problem_name,
                                                         dataset_problem_list=dataset_problem_list,
@@ -390,8 +392,8 @@ if __name__ == '__main__':
     set_ipython_exception_hook()
     fast_seed(20010924)
 
-    _data_problem_list = [DTLZ_PROBLEM_NAMES.d4c]
-    main(problem_name=DTLZ_PROBLEM_NAMES.d4c,
+    _data_problem_list = [DTLZ_PROBLEM_NAMES.w5c]
+    main(problem_name=DTLZ_PROBLEM_NAMES.w5c,
          dataset_problem_list=_data_problem_list,
          do_plot=True,
          print_progress=True,

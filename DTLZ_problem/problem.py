@@ -2,6 +2,8 @@ import numpy as np
 
 from pymoo.core.problem import Problem
 from pymoo.problems.many.dtlz import get_ref_dirs
+from pymoo.problems.many.wfg import WFG1, WFG2, WFG3, WFG4, WFG5, WFG6, WFG7, WFG8, WFG9
+from pymoo.problems.many.wfg import _shape_mixed, _shape_convex, _shape_disconnected, _shape_linear, _shape_concave
 
 from maml_mod import MamlWrapperAbc
 from utils import NamedDict
@@ -268,7 +270,196 @@ class DTLZbProblem(Problem):
             fi = self.sol(xi)
             f.append(fi)
         out['F'] = np.array(f)
-        return np.array(f)
+
+
+class WFG1c(WFG1):
+
+    def __init__(self, n_var=10, n_obj=3, delta1=0, delta2=0, **kwargs):
+        self.delta1 = delta1
+        self.delta2 = delta2
+        super().__init__(n_var, n_obj, **kwargs)
+    
+    def _evaluate(self, x, out, *args, **kwargs):
+        y = x / self.xu
+        y = WFG1c.t1(y, self.n_var, self.k)
+        y = WFG1c.t2(y, self.n_var, self.k)
+        y = WFG1c.t3(y, self.n_var)
+        y = WFG1c.t4(y, self.n_obj, self.n_var, self.k)
+
+        y = self._post(y, self.A)
+
+        h = [_shape_convex(y[:, :-1], m + 1) for m in range(self.n_obj - 1)]
+        h.append(_shape_mixed(y[:, 0], alpha=1.0, A=5.0))
+
+        out["F"] = self._calculate(y, self.S, h) * (self.delta1 + 1) + self.delta2
+
+
+class WFG2c(WFG2):
+
+    def __init__(self, n_var=10, n_obj=3, delta1=0, delta2=0, **kwargs):
+        self.delta1 = delta1
+        self.delta2 = delta2
+        super().__init__(n_var, n_obj, **kwargs)
+    
+    def _evaluate(self, x, out, *args, **kwargs):
+        y = x / self.xu
+        y = WFG1.t1(y, self.n_var, self.k)
+        y = WFG2.t2(y, self.n_var, self.k)
+        y = WFG2.t3(y, self.n_obj, self.n_var, self.k)
+        y = self._post(y, self.A)
+
+        h = [_shape_convex(y[:, :-1], m + 1) for m in range(self.n_obj - 1)]
+        h.append(_shape_disconnected(y[:, 0], alpha=1.0, beta=1.0, A=5.0))
+
+        out["F"] = self._calculate(y, self.S, h) * (self.delta1 + 1) + self.delta2
+
+
+class WFG3c(WFG3):
+
+    def __init__(self, n_var=10, n_obj=3, delta1=0, delta2=0, **kwargs):
+        self.delta1 = delta1
+        self.delta2 = delta2
+        super().__init__(n_var, n_obj, **kwargs)
+
+    def _evaluate(self, x, out, *args, **kwargs):
+        y = x / self.xu
+        y = WFG1.t1(y, self.n_var, self.k)
+        y = WFG2.t2(y, self.n_var, self.k)
+        y = WFG2.t3(y, self.n_obj, self.n_var, self.k)
+        y = self._post(y, self.A)
+
+        h = [_shape_linear(y[:, :-1], m + 1) for m in range(self.n_obj)]
+
+        out["F"] = self._calculate(y, self.S, h) * (self.delta1 + 1) + self.delta2
+
+
+class WFG4c(WFG4):
+
+    def __init__(self, n_var=10, n_obj=3, delta1=0, delta2=0, **kwargs):
+        self.delta1 = delta1
+        self.delta2 = delta2
+        super().__init__(n_var, n_obj, **kwargs)
+    
+    def _evaluate(self, x, out, *args, **kwargs):
+        y = x / self.xu
+        y = WFG4.t1(y)
+        y = WFG4.t2(y, self.n_obj, self.k)
+        y = self._post(y, self.A)
+
+        h = [_shape_concave(y[:, :-1], m + 1) for m in range(self.n_obj)]
+
+        out["F"] = self._calculate(y, self.S, h) * (self.delta1 + 1) + self.delta2
+
+
+class WFG5c(WFG5):
+
+    def __init__(self, n_var=10, n_obj=3, delta1=0, delta2=0, **kwargs):
+        self.delta1 = delta1
+        self.delta2 = delta2
+        super().__init__(n_var, n_obj, **kwargs)
+    
+    def _evaluate(self, x, out, *args, **kwargs):
+        y = x / self.xu
+        y = WFG5.t1(y)
+        y = WFG4.t2(y, self.n_obj, self.k)
+        y = self._post(y, self.A)
+
+        h = [_shape_concave(y[:, :-1], m + 1) for m in range(self.n_obj)]
+
+        out["F"] = self._calculate(y, self.S, h) * (self.delta1 + 1) + self.delta2
+
+
+class WFG6c(WFG6):
+
+    def __init__(self, n_var=10, n_obj=3, delta1=0, delta2=0, **kwargs):
+        self.delta1 = delta1
+        self.delta2 = delta2
+        super().__init__(n_var, n_obj, **kwargs)
+    
+    def _evaluate(self, x, out, *args, **kwargs):
+        y = x / self.xu
+        y = WFG1.t1(y, self.n_var, self.k)
+        y = WFG6.t2(y, self.n_obj, self.n_var, self.k)
+        y = self._post(y, self.A)
+
+        h = [_shape_concave(y[:, :-1], m + 1) for m in range(self.n_obj)]
+
+        out["F"] = self._calculate(y, self.S, h) * (self.delta1 + 1) + self.delta2
+
+
+class WFG7c(WFG7):
+
+    def __init__(self, n_var=10, n_obj=3, delta1=0, delta2=0, **kwargs):
+        self.delta1 = delta1
+        self.delta2 = delta2
+        super().__init__(n_var, n_obj, **kwargs)
+    
+    def _evaluate(self, x, out, *args, **kwargs):
+        y = x / self.xu
+        y = WFG7.t1(y, self.k)
+        y = WFG1.t1(y, self.n_var, self.k)
+        y = WFG4.t2(y, self.n_obj, self.k)
+        y = self._post(y, self.A)
+
+        h = [_shape_concave(y[:, :-1], m + 1) for m in range(self.n_obj)]
+
+        out["F"] = self._calculate(y, self.S, h) * (self.delta1 + 1) + self.delta2
+
+
+class WFG8c(WFG8):
+
+    def __init__(self, n_var=10, n_obj=3, delta1=0, delta2=0, **kwargs):
+        self.delta1 = delta1
+        self.delta2 = delta2
+        super().__init__(n_var, n_obj, **kwargs)
+
+    def _evaluate(self, x, out, *args, **kwargs):
+        y = x / self.xu
+        y[:, self.k:self.n_var] = WFG8.t1(y, self.n_var, self.k)
+        y = WFG1.t1(y, self.n_var, self.k)
+        y = WFG4.t2(y, self.n_obj, self.k)
+        y = self._post(y, self.A)
+
+        h = [_shape_concave(y[:, :-1], m + 1) for m in range(self.n_obj)]
+
+        out["F"] = self._calculate(y, self.S, h) * (self.delta1 + 1) + self.delta2
+
+
+class WFG9c(WFG9):
+
+    def __init__(self, n_var=10, n_obj=3, delta1=0, delta2=0, **kwargs):
+        self.delta1 = delta1
+        self.delta2 = delta2
+        super().__init__(n_var, n_obj, **kwargs)
+    
+    def _evaluate(self, x, out, *args, **kwargs):
+        y = x / self.xu
+        y[:, :self.n_var - 1] = WFG9.t1(y, self.n_var)
+        y = WFG9.t2(y, self.n_var, self.k)
+        y = WFG9.t3(y, self.n_obj, self.n_var, self.k)
+
+        h = [_shape_concave(y[:, :-1], m + 1) for m in range(self.n_obj)]
+
+        out["F"] = self._calculate(y, self.S, h) * (self.delta1 + 1) + self.delta2
+
+
+class WFGcProblem(Problem):
+    def __init__(self, n_var: int, n_obj: int, sol: MamlWrapperAbc):
+        self.sol = sol
+        super().__init__(n_var=n_var,
+                         n_obj=n_obj,
+                         #  n_constr=2,
+                         xl=np.array([0] * n_var, np.float32),
+                         xu=2 * np.arange(1, n_var + 1, dtype=np.float32),
+                         )
+
+    def _evaluate(self, x, out, *args, **kwargs):
+        x = x.astype(np.float32)
+        f = []
+        for xi in x:
+            fi = self.sol(xi)
+            f.append(fi)
+        out['F'] = np.array(f)
 
 
 _PROBLEMS = NamedDict({
@@ -279,7 +470,16 @@ _PROBLEMS = NamedDict({
     'DTLZ4c': DTLZ4c,
     'DTLZ5c': DTLZ5c,
     'DTLZ6c': DTLZ6c,
-    'DTLZ7c': DTLZ7c
+    'DTLZ7c': DTLZ7c,
+    'WFG1c': WFG1c,
+    'WFG2c': WFG2c,
+    'WFG3c': WFG3c,
+    'WFG4c': WFG4c,
+    'WFG5c': WFG5c,
+    'WFG6c': WFG6c,
+    'WFG7c': WFG7c,
+    'WFG8c': WFG8c,
+    'WFG9c': WFG9c
 })
 
 _PROBLEM_NAMES = NamedDict({
@@ -290,7 +490,16 @@ _PROBLEM_NAMES = NamedDict({
     'd4c': 'DTLZ4c',
     'd5c': 'DTLZ5c',
     'd6c': 'DTLZ6c',
-    'd7c': 'DTLZ7c'
+    'd7c': 'DTLZ7c',
+    'w1c': 'WFG1c',
+    'w2c': 'WFG2c',
+    'w3c': 'WFG3c',
+    'w4c': 'WFG4c',
+    'w5c': 'WFG5c',
+    'w6c': 'WFG6c',
+    'w7c': 'WFG7c',
+    'w8c': 'WFG8c',
+    'w9c': 'WFG9c',
 })
 
 
