@@ -16,7 +16,7 @@ from DTLZ_problem import DTLZbProblem, WFGcProblem, get_custom_problem
 from DTLZ_problem import evaluate, get_pf, get_moea_data, get_ps
 from DTLZ_problem import DTLZ_PROBLEM_NAMES
 from benchmarking import benchmark_for_seeds
-from maml_mod import MamlWrapperNaive as MamlWrapper
+from maml_mod import MamlWrapperMulti as MamlWrapper
 from problem_config.example import get_args, get_network_structure, get_dataset
 from utils import NamedDict, set_ipython_exception_hook
 from visualization import visualize_pf, visualize_igd
@@ -230,7 +230,7 @@ def main(problem_name: str,
         ########################################
         ## Calculate PF of the Surrogate Model #
         ########################################
-        ref_dirs = get_reference_directions("das-dennis", 3, n_partitions=8)
+        ref_dirs = get_reference_directions("das-dennis", n_objectives, n_partitions=8)
         algorithm_surrogate = RVEA(pop_size=proxy_pop_size, sampling=history_x, ref_dirs=ref_dirs)
         problem_surrogate = DTLZbProblem(n_var=n_var, n_obj=n_objectives, sol=meta) if problem_name[0] == 'D' \
             else WFGcProblem(n_var=n_var, n_obj=n_objectives, sol=meta)
@@ -289,7 +289,7 @@ def main(problem_name: str,
 
     cprint('Algorithm complete', do_print=print_progress)
 
-    ref_dirs = get_reference_directions("das-dennis", 3, n_partitions=8)
+    ref_dirs = get_reference_directions("das-dennis", n_objectives, n_partitions=8)
     moea_problem = RVEA(pop_size=moea_pop_size, ref_dirs=ref_dirs)
     moea_pf, moea_igd_index, moea_igd = get_moea_data(n_var, n_objectives, problem_delta,
                                                     moea_problem,
@@ -392,10 +392,10 @@ if __name__ == '__main__':
     set_ipython_exception_hook()
     fast_seed(20010924)
 
-    _data_problem_list = [DTLZ_PROBLEM_NAMES.w5c]
-    main(problem_name=DTLZ_PROBLEM_NAMES.w5c,
+    _data_problem_list = [DTLZ_PROBLEM_NAMES.d4c]
+    main(problem_name=DTLZ_PROBLEM_NAMES.d4c,
          dataset_problem_list=_data_problem_list,
-         do_plot=True,
+         do_plot=False,
          print_progress=True,
          do_train=True
          )

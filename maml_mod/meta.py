@@ -292,6 +292,37 @@ class Meta(nn.Module):
             ret[3].append(t_weights)
         return tuple(ret)
 
+    def fine_tuning_continue_multi(self, y_idx, nets, fast_weights, x, y, x_spt, y_spt, x_qry, y_qry, return_single_lose=True):
+        # assert y.shape[0] == len(nets)
+        if self.dim == 0:
+            y = y.T
+        n_net = len(nets)
+        ret = [[], [], [], []]
+        for i in range(n_net):
+            if x_spt is not None:
+                if self.dim == 0:
+                    x_s, y_s = x_spt[i], y_spt[i].reshape(-1, *y.size()[2:])
+                else:
+                    x_s, y_s = x_spt[i], y_spt[i].reshape(-1, *y.size()[1:])
+            else:
+                x_s, y_s = None, None
+            if x_qry is not None:
+                if self.dim == 0:
+                    x_q, y_q = x_qry[i], y_qry[i].reshape(-1, *y.size()[2:])
+                else:
+                    x_q, y_q = x_qry[i], y_qry[i].reshape(-1, *y.size()[1:])
+            else:
+                x_q, y_q = None, None
+            yi = y[y_idx]
+            t_loss, t_logits, t_net, t_weights = self._fine_tuning_continue(
+                nets[i], fast_weights[i], x, yi, x_s, y_s, x_q, y_q, return_single_lose
+            )
+            ret[0].append(t_loss)
+            ret[1].append(t_logits)
+            ret[2].append(t_net)
+            ret[3].append(t_weights)
+        return tuple(ret)
+
     def pretrain_fine_tuning(self, train_x, train_y, x_spt, y_spt, x_qry, y_qry, return_single_lose=True):
 
         loss_func = F.mse_loss
