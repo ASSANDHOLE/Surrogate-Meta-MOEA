@@ -11,12 +11,13 @@ from pymoo.indicators.igd import IGD
 from pymoo.operators.sampling.lhs import sampling_lhs
 from pymoo.optimize import minimize
 from pymoo.util.ref_dirs import get_reference_directions
+from pymoo.indicators.hv import Hypervolume
 
 from DTLZ_problem import DTLZbProblem, WFGcProblem, get_custom_problem
 from DTLZ_problem import evaluate, get_pf, get_moea_data, get_ps
 from DTLZ_problem import DTLZ_PROBLEM_NAMES
 from benchmarking import benchmark_for_seeds
-from maml_mod import MamlWrapperMulti as MamlWrapper
+from maml_mod import MamlWrapperNaive as MamlWrapper
 from problem_config.example import get_args, get_network_structure, get_dataset
 from utils import NamedDict, set_ipython_exception_hook
 from visualization import visualize_pf, visualize_igd
@@ -49,7 +50,7 @@ def generate_dataset(additional_data, args, dataset_problem_list, problem_name, 
         dataset_x[2] = dataset_x[2][np.random.choice(dataset_x[2].shape[0], args.k_spt, replace=False), :]
         dataset, min_max = get_dataset(
             args,
-            normalize_targets=False,
+            normalize_targets=True,
             delta=delta,
             problem_name=dataset_problem_list,
             test_problem_name=[problem_name],
@@ -75,6 +76,7 @@ def get_plot_scale(target_pf, true_pf, n_objectives):
 
 def main(problem_name: str,
          dataset_problem_list: List[str],
+         selection_method: str,
          print_progress=False,
          do_plot=False,
          do_train=True,
@@ -90,6 +92,8 @@ def main(problem_name: str,
         Name of the problem to perform benchmark on
     dataset_problem_list : List[str]
         List of problem names to use as data
+    selection_method: str
+        Selection method to use
     print_progress : bool
         Whether to print progress
     do_plot : bool
@@ -239,24 +243,43 @@ def main(problem_name: str,
                        ('n_gen', proxy_n_gen),
                        verbose=False)
 
-        surrogate_pareto_set = res.X
-
         # the objective of the real problem by the Pareto set of the surrogate model
         # For visualization purpose
         if do_plot:
-            objective_true = evaluate(surrogate_pareto_set, problem_delta, n_objectives, problem_name, min_max=min_max)
+            objective_true = evaluate(res.X, problem_delta, n_objectives, problem_name, min_max=min_max)
             surrogate_per_update_idg.append(igd_metric.do(objective_true))
 
         # select individuals to add to the training set
-        if len(surrogate_pareto_set) > max_pts_num:
-            surrogate_pareto_set = surrogate_pareto_set[np.random.choice(surrogate_pareto_set.shape[0], max_pts_num)]
-        surrogate_pareto_set = surrogate_pareto_set.astype(np.float32)
-        y_true = evaluate(surrogate_pareto_set, problem_delta, n_objectives, problem_name, min_max=min_max)
-        y_true = y_true.astype(np.float32)
+        if selection_method == 'ns':
+            surrogate_pareto_set = res.X
+            if len(surrogate_pareto_set) > max_pts_num:
+                surrogate_pareto_set = surrogate_pareto_set[np.random.choice(surrogate_pareto_set.shape[0], max_pts_num)]
+            eval_x = surrogate_pareto_set.astype(np.float32)
+        elif selection_method == 'hv':
+            surrogate_pop = res.pop
+            surrogate_f = np.array([ind.F for ind in surrogate_pop])
+            approx_ideal = surrogate_f.min(axis=0)
+            approx_nadir = surrogate_f.max(axis=0)
+            metric = Hypervolume(ref_point= np.array([1.1, 1.1, 1.1]),
+                     norm_ref_point=False,
+                     zero_to_one=True,
+                     ideal=approx_ideal,
+                     nadir=approx_nadir)
+            surrogate_X = [ind.X for ind in surrogate_pop]
+            surrogate_hv = []
+            for ind in surrogate_pop:
+                surrogate_hv.append(metric.do(ind.F))
+            zip_arr = zip(surrogate_hv,surrogate_X)
+            sorted_zip = sorted(zip_arr, key=lambda x:x[0], reverse=True)
+            sorted_hv, sorted_X = zip(*sorted_zip)
+            eval_x = np.array(sorted_X[:max_pts_num]).astype(np.float32)
+        
+        eval_y = evaluate(eval_x, problem_delta, n_objectives, problem_name, min_max=min_max)
+        eval_y = eval_y.astype(np.float32)
 
-        fn_eval += surrogate_pareto_set.shape[0]
-        history_x = np.vstack((history_x, surrogate_pareto_set))
-        history_f = np.vstack((history_f, y_true))
+        fn_eval += eval_x.shape[0]
+        history_x = np.vstack((history_x, eval_x))
+        history_f = np.vstack((history_f, eval_y))
 
         ##################################################
         # Fine-Tune the Surrogate Model With New Dataset #
@@ -321,6 +344,7 @@ def main(problem_name: str,
         }
         ours_no_meta_igd_index, ours_no_meta_igd = main(problem_name=problem_name,
                                                         dataset_problem_list=dataset_problem_list,
+                                                        selection_method=selection_method,
                                                         return_none_train_igd=True,
                                                         additional_data=additional_data)
 
@@ -395,6 +419,7 @@ if __name__ == '__main__':
     _data_problem_list = [DTLZ_PROBLEM_NAMES.d4c]
     main(problem_name=DTLZ_PROBLEM_NAMES.d4c,
          dataset_problem_list=_data_problem_list,
+         selection_method='hv',
          do_plot=False,
          print_progress=True,
          do_train=True
