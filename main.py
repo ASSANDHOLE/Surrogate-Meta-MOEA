@@ -128,13 +128,16 @@ def main(problem_name: str,
 
     # initial function evaluation number
     fn_eval = args.k_spt
-    fn_eval_limit = 300 + 2
+    if 'FN_EVAL_LIMIT' in globals() and FN_EVAL_LIMIT is not None:
+        fn_eval_limit = FN_EVAL_LIMIT + 2
+    else:
+        fn_eval_limit = 200 + 2
 
     # max number of new individuals to add
     # to the training set of the surrogate model
-    max_pts_num = 20
+    max_pts_num = 10
     moea_pop_size = 50
-    proxy_n_gen = 100
+    proxy_n_gen = 50
     proxy_pop_size = 100
     network_structure = get_network_structure(args)
 
@@ -253,27 +256,28 @@ def main(problem_name: str,
         if selection_method == 'ns':
             surrogate_pareto_set = res.X
             if len(surrogate_pareto_set) > max_pts_num:
-                surrogate_pareto_set = surrogate_pareto_set[np.random.choice(surrogate_pareto_set.shape[0], max_pts_num)]
+                surrogate_pareto_set = surrogate_pareto_set[
+                    np.random.choice(surrogate_pareto_set.shape[0], max_pts_num)]
             eval_x = surrogate_pareto_set.astype(np.float32)
         elif selection_method == 'hv':
             surrogate_pop = res.pop
             surrogate_f = np.array([ind.F for ind in surrogate_pop])
             approx_ideal = surrogate_f.min(axis=0)
             approx_nadir = surrogate_f.max(axis=0)
-            metric = Hypervolume(ref_point= np.array([1.1, 1.1, 1.1]),
-                     norm_ref_point=False,
-                     zero_to_one=True,
-                     ideal=approx_ideal,
-                     nadir=approx_nadir)
+            metric = Hypervolume(ref_point=np.array([1.1, 1.1, 1.1]),
+                                 norm_ref_point=False,
+                                 zero_to_one=True,
+                                 ideal=approx_ideal,
+                                 nadir=approx_nadir)
             surrogate_X = [ind.X for ind in surrogate_pop]
             surrogate_hv = []
             for ind in surrogate_pop:
                 surrogate_hv.append(metric.do(ind.F))
-            zip_arr = zip(surrogate_hv,surrogate_X)
-            sorted_zip = sorted(zip_arr, key=lambda x:x[0], reverse=True)
+            zip_arr = zip(surrogate_hv, surrogate_X)
+            sorted_zip = sorted(zip_arr, key=lambda x: x[0], reverse=True)
             sorted_hv, sorted_X = zip(*sorted_zip)
             eval_x = np.array(sorted_X[:max_pts_num]).astype(np.float32)
-        
+
         eval_y = evaluate(eval_x, problem_delta, n_objectives, problem_name, min_max=min_max)
         eval_y = eval_y.astype(np.float32)
 
@@ -315,15 +319,16 @@ def main(problem_name: str,
     ref_dirs = get_reference_directions("das-dennis", n_objectives, n_partitions=8)
     moea_problem = RVEA(pop_size=moea_pop_size, ref_dirs=ref_dirs)
     moea_pf, moea_igd_index, moea_igd = get_moea_data(n_var, n_objectives, problem_delta,
-                                                    moea_problem,
-                                                    fn_eval_limit,
-                                                    igd_metric,
-                                                    problem_name,
-                                                    min_max)
+                                                      moea_problem,
+                                                      fn_eval_limit,
+                                                      igd_metric,
+                                                      problem_name,
+                                                      min_max)
     moea_igd_index = np.insert(moea_igd_index, 0, 0)
     moea_igd = np.insert(moea_igd, 0, ours_igd[0])
     cprint('MOEA Baseline complete', do_print=print_progress)
 
+    ours_no_meta_igd = [0.]
     if do_plot:
         # plot the PF of our method
         scale = get_plot_scale(history_f, problem_pf, n_objectives)
@@ -356,12 +361,14 @@ def main(problem_name: str,
         visualize_igd(plot_index_list, igd_list, color_list, label_list)
         plt.show()
 
-    cprint(f'IGD of Proxy: {ours_igd[-2:]}', do_print=print_progress)
-    cprint(f'IGD of MOEA:  {moea_igd[-2:]}', do_print=print_progress)
+    cprint(f'IGD of Proxy:     {ours_igd[-2:]}', do_print=print_progress)
+    cprint(f'IGD of MOEA:      {moea_igd[-2:]}', do_print=print_progress)
+    if do_plot:
+        cprint(f'IGD of Non-Train: {ours_no_meta_igd[-2:]}', do_print=print_progress)
 
     # deallocate memory
     del meta
-    return ours_igd[-1], moea_igd[-1]
+    return ours_igd[-1], moea_igd[-1], ours_no_meta_igd[-1]
 
 
 def post_mean_std(data: list | np.ndarray):
@@ -413,14 +420,16 @@ def fast_seed(seed: int) -> None:
 
 
 if __name__ == '__main__':
-    set_ipython_exception_hook()
-    fast_seed(20010924)
+    # set_ipython_exception_hook()
+    fast_seed(20010921)
+
+    FN_EVAL_LIMIT = 200
 
     _data_problem_list = [DTLZ_PROBLEM_NAMES.d4c]
     main(problem_name=DTLZ_PROBLEM_NAMES.d4c,
          dataset_problem_list=_data_problem_list,
          selection_method='hv',
-         do_plot=False,
+         do_plot=True,
          print_progress=True,
          do_train=True
          )

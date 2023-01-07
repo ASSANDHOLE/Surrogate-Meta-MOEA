@@ -2,11 +2,32 @@ import sys
 
 sys.path.append('..')
 
+import platform
+
 import torch
 
 from DTLZ_problem import create_dataset
 
 from utils import NamedDict
+
+
+def get_device(force_device: str = None):
+    if force_device is not None:
+        return torch.device(force_device)
+
+    if platform.system().lower() == 'darwin' and \
+            platform.processor().lower().startswith('arm'):
+        has_mps_support = False
+        try:
+            has_mps_support = torch.backends.mps.is_available()
+        except AttributeError:
+            pass
+        # Enable MPS support for Apple Silicon
+        # See https://pytorch.org/blog/introducing-accelerated-pytorch-training-on-mac/
+        device = torch.device('mps' if has_mps_support else 'cpu')
+    else:
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    return device
 
 
 def get_args():
@@ -20,11 +41,11 @@ def get_args():
     args.update_lr = 0.02
     args.meta_lr = 0.01
     args.fine_tune_lr = 0.03
-    args.k_spt = 245
+    args.k_spt = 150
     args.k_qry = 600
     args.update_step = 10
     args.update_step_test = 15
-    args.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    args.device = get_device()
     # args.device = torch.device('cpu')
     return args
 
