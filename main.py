@@ -421,7 +421,7 @@ def fast_seed(seed: int) -> None:
 
 if __name__ == '__main__':
     # set_ipython_exception_hook()
-    fast_seed(20010921)
+    fast_seed(2001_09_21)
 
     FN_EVAL_LIMIT = 200
 

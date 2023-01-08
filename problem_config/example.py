@@ -11,7 +11,7 @@ from DTLZ_problem import create_dataset
 from utils import NamedDict
 
 
-def get_device(force_device: str = None):
+def get_device(*, force_device: str = None):
     if force_device is not None:
         return torch.device(force_device)
 
@@ -30,22 +30,22 @@ def get_device(force_device: str = None):
     return device
 
 
-def get_args():
+def get_args(**kwargs):
     args = NamedDict()
     args.dim = 0
     args.problem_dim = (10, 3)
     args.train_test = (1000, 1)
     args.epoch = 10
     args.sgd_epoch = 10
-    args.sgd_select_n = 100
+    args.sgd_select_n = 20
     args.update_lr = 0.02
     args.meta_lr = 0.01
     args.fine_tune_lr = 0.03
-    args.k_spt = 150
+    args.k_spt = 10
     args.k_qry = 600
-    args.update_step = 10
-    args.update_step_test = 15
-    args.device = get_device()
+    args.update_step = 3
+    args.update_step_test = 5
+    args.device = get_device(**kwargs)
     # args.device = torch.device('cpu')
     return args
 
@@ -60,7 +60,7 @@ def get_network_structure(args):
         ('relu', [True]),
         ('linear', [100, 100]),
         ('relu', [True]),
-        # ('linear', [200, 200]),
+        # ('linear', [100, 100]),
         # ('relu', [True]),
         # ('linear', [200, 200]),
         # ('relu', [True]),
