@@ -1,7 +1,11 @@
 from typing import List
 from multiprocessing import Lock
 from multiprocessing.managers import BaseManager
-import pynvml
+
+try:
+    import pynvml
+except ImportError:
+    pynvml = None
 
 
 class GpuSelector:

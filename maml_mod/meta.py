@@ -86,6 +86,8 @@ class Meta(nn.Module):
             logits = self.net(x_spt[i], vars=None, bn_training=True)
             loss = loss_func(logits, y_spt[i])
             grad = torch.autograd.grad(loss, self.net.parameters())
+            # clip gradient
+            _ = self.clip_grad_by_norm_(grad, 10)
             fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, self.net.parameters())))
 
             # this is the loss and accuracy before first update
@@ -110,6 +112,8 @@ class Meta(nn.Module):
                 loss = loss_func(logits, y_spt[i])
                 # 2. compute grad on theta_pi
                 grad = torch.autograd.grad(loss, fast_weights)
+                # clip gradient
+                _ = self.clip_grad_by_norm_(grad, 10)
                 # 3. theta_pi = theta_pi - train_lr * grad
                 fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, fast_weights)))
 
@@ -170,6 +174,8 @@ class Meta(nn.Module):
         logits = logits.reshape(y_spt.shape)
         loss = loss_func(logits, y_spt)
         grad = torch.autograd.grad(loss, net.parameters())
+        # clip gradient
+        _ = self.clip_grad_by_norm_(grad, 10)
         fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, net.parameters())))
         losses = []
 
@@ -180,6 +186,8 @@ class Meta(nn.Module):
             loss = loss_func(logits, y_spt)
             # 2. compute grad on theta_pi
             grad = torch.autograd.grad(loss, fast_weights)
+            # clip gradient
+            _ = self.clip_grad_by_norm_(grad, 10)
             # 3. theta_pi = theta_pi - train_lr * grad
             fast_weights = list(map(lambda p: p[1] - self.update_lr * p[0], zip(grad, fast_weights)))
 
@@ -237,6 +245,8 @@ class Meta(nn.Module):
             logits = logits.reshape(y_spt.shape)
             loss = loss_func(logits, y_spt)
             grad = torch.autograd.grad(loss, fast_weights)
+            # clip gradient
+            _ = self.clip_grad_by_norm_(grad, 10)
             fast_weights = list(map(lambda p: p[1] - self.fine_tune_lr * p[0], zip(grad, fast_weights)))
             if query_size != 0:
                 with torch.no_grad():
@@ -273,6 +283,37 @@ class Meta(nn.Module):
             else:
                 x_q, y_q = None, None
             yi = y[i] if self.dim == 0 else y
+            t_loss, t_logits, t_net, t_weights = self._fine_tuning_continue(
+                nets[i], fast_weights[i], x, yi, x_s, y_s, x_q, y_q, return_single_lose
+            )
+            ret[0].append(t_loss)
+            ret[1].append(t_logits)
+            ret[2].append(t_net)
+            ret[3].append(t_weights)
+        return tuple(ret)
+
+    def fine_tuning_continue_multi(self, y_idx, nets, fast_weights, x, y, x_spt, y_spt, x_qry, y_qry, return_single_lose=True):
+        # assert y.shape[0] == len(nets)
+        if self.dim == 0:
+            y = y.T
+        n_net = len(nets)
+        ret = [[], [], [], []]
+        for i in range(n_net):
+            if x_spt is not None:
+                if self.dim == 0:
+                    x_s, y_s = x_spt[i], y_spt[i].reshape(-1, *y.size()[2:])
+                else:
+                    x_s, y_s = x_spt[i], y_spt[i].reshape(-1, *y.size()[1:])
+            else:
+                x_s, y_s = None, None
+            if x_qry is not None:
+                if self.dim == 0:
+                    x_q, y_q = x_qry[i], y_qry[i].reshape(-1, *y.size()[2:])
+                else:
+                    x_q, y_q = x_qry[i], y_qry[i].reshape(-1, *y.size()[1:])
+            else:
+                x_q, y_q = None, None
+            yi = y[y_idx]
             t_loss, t_logits, t_net, t_weights = self._fine_tuning_continue(
                 nets[i], fast_weights[i], x, yi, x_s, y_s, x_q, y_q, return_single_lose
             )

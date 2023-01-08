@@ -22,7 +22,7 @@ from DTLZ_problem import DTLZbProblem, get_custom_problem
 from DTLZ_problem import evaluate, get_pf
 from benchmarking import benchmark_for_seeds_different_args
 from problem_config.example import get_args, get_dataset
-from maml_mod import MamlWrapper
+from maml_mod import MamlWrapperMrA as MamlWrapper
 from pymoo.core.problem import Problem
 from pymoo.operators.sampling.lhs import sampling_lhs
 from pymoo.algorithms.moo.nsga2 import NSGA2

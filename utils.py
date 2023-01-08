@@ -1,13 +1,19 @@
 import sys
+import warnings
 from typing import Tuple
 
-from IPython.core import ultratb
+_DEFAULT_EXCEPT_HOOK = None
+
+try:
+    from IPython.core import ultratb
+except ImportError:
+    _DEFAULT_EXCEPT_HOOK = sys.excepthook
 
 
 class NamedDict(dict):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.__dict__ = self
+        # self.__dict__ = self
 
     def __setattr__(self, key, value):
         self[key] = value
@@ -29,7 +35,10 @@ class _IPythonExceptionHook:
 
 
 def set_ipython_exception_hook():
-    sys.excepthook = _IPythonExceptionHook()
+    if _DEFAULT_EXCEPT_HOOK is None:
+        sys.excepthook = _IPythonExceptionHook()
+    else:
+        warnings.warn('IPython is not installed, use default exception hook')
 
 
 def test(_n, _m):

@@ -15,16 +15,20 @@ except ImportError:
     from problem import get_custom_problem
 
 
-def pf_data(n_var: int, n_objective: int, delta1: int, delta2: int, problem_name: str) -> np.ndarray:
-    problem = get_custom_problem(name=problem_name, n_var=n_var, n_obj=n_objective, delta1=delta1, delta2=delta2)  # change delta here
+def get_ps(n_var: int, n_objective: int, delta1: int, delta2: int, problem_name: str) -> np.ndarray:
+    problem = get_custom_problem(name=problem_name,
+                                 n_var=n_var,
+                                 n_obj=n_objective,
+                                 delta1=delta1,
+                                 delta2=delta2)
     ref_dirs = get_reference_directions("das-dennis", n_objective, n_partitions=12)
     N = ref_dirs.shape[0]
     # create the algorithm object
-    algorithm = NSGA3(pop_size=N, ref_dirs=ref_dirs)
+    algorithm = NSGA3(pop_size=N+1, ref_dirs=ref_dirs)
     # execute the optimization
     res = minimize(problem,
                    algorithm,
-                   termination=('n_gen', 100))
+                   termination=('n_gen', 600))
     return res.X
 
 
@@ -96,7 +100,9 @@ def create_dataset(problem_dim: Tuple[int, int],
     problem_dim : Tuple[int, int]
         The number of variables and number of objectives for each problem
     problem_name : List[str]
-        The problem names
+        The problem names in the training set
+    test_problem_name : List[str]
+        The problem names for testing
     x : Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
         [x_spt_train, x_qry_train, x_spt_test, x_qry_test]
         The input data, shape (4, n_problem, n_spt, n_variables)
@@ -130,13 +136,13 @@ def create_dataset(problem_dim: Tuple[int, int],
     """
     create_dataset_inner = create_dataset_inner_0d if dim == 0 else create_dataset_inner_1d
 
-    def generate_x(_i, _j, ratio_of_pf: float = 0.5):
+    def generate_x(_i, _j, problem_name_list: List[str], ratio_of_pf: float = 0.5):
         x_pf = []
         pf_num = int(ratio_of_pf * spt_qry[_j])
         pf_num = pf_num if pf_num > 0 else 0
         if pf_num > 0:
             for k in range(n_problem[_i]):
-                ps = pf_data(n_var, n_obj, delta[_i][_j][k], delta[_i][_j][k], problem_name)
+                ps = get_ps(n_var, n_obj, delta[_i][_j][k], delta[_i][_j][k], problem_name_list[k%len(problem_name_list)])
                 x_pf.append(ps[np.random.choice(ps.shape[0], pf_num)])
             x_pf = np.array(x_pf)
         x_ran = np.random.rand(n_problem[_i], spt_qry[_j] - pf_num, n_var)
@@ -160,7 +166,8 @@ def create_dataset(problem_dim: Tuple[int, int],
     for i in range(2):
         for j in range(2):
             if x[i * 2 + j] is None:
-                x[i * 2 + j] = generate_x(i, j, pf_ratio)
+                problem_name_list = problem_name if i == 0 else test_problem_name
+                x[i * 2 + j] = generate_x(i, j, problem_name_list, pf_ratio)
             # x.append(np.random.rand(n_problem[i], spt_qry[j], n_var))
 
     train_set = [*create_dataset_inner(x[0], problem_dim, delta[0], problem_name), *create_dataset_inner(x[1], problem_dim, delta[0], problem_name)]
@@ -266,11 +273,11 @@ def get_pf(n_objectives: int, problem: Any,
     ref_dirs = get_reference_directions("das-dennis", n_objectives, n_partitions=12)
     N = ref_dirs.shape[0]
     # create the algorithm object
-    algorithm = NSGA3(pop_size=N, ref_dirs=ref_dirs)
+    algorithm = NSGA3(pop_size=N+1, ref_dirs=ref_dirs)
     # execute the optimization
     res = minimize(problem,
                    algorithm,
-                   termination=('n_gen', 100))
+                   termination=('n_gen', 600))
     pf = res.F
     if min_max is not None and min_max[0] is not None:
         pf -= min_max[0]
